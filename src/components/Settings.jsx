@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Printer, Database, Store, Receipt, Percent, RefreshCw, ChefHat, Plus, Trash2, Users, Shield, Key, Coins, CheckCircle, Network, PcCase } from 'lucide-react';
+import { Save, Printer, Database, Store, Receipt, Percent, RefreshCw, ChefHat, Plus, Trash2, Users, Shield, Key, Coins, CheckCircle, PcCase } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 const Settings = () => {
@@ -10,7 +10,8 @@ const Settings = () => {
   const [notification, setNotification] = useState(null);
   const [systemPrinters, setSystemPrinters] = useState([]); // Tizimdagi printerlar ro'yxati
   
-  const [newKitchen, setNewKitchen] = useState({ name: '', printer_ip: '', printer_port: 9100, printer_type: 'lan' });
+  // Yangi oshxona (printer_ip endi printer nomini bildiradi)
+  const [newKitchen, setNewKitchen] = useState({ name: '', printer_ip: '' });
   const [newUser, setNewUser] = useState({ name: '', pin: '', role: 'waiter' }); 
 
   const [modal, setModal] = useState({ isOpen: false, type: null, id: null, message: '' });
@@ -18,7 +19,7 @@ const Settings = () => {
   const [settings, setSettings] = useState({
     restaurantName: "", address: "", phone: "", wifiPassword: "",
     serviceChargeType: "percent", serviceChargeValue: 0, receiptFooter: "", 
-    printerReceiptIP: "", printerReceiptPort: 9100, printerReceiptType: "lan" // Kassa printeri turi
+    printerReceiptIP: "" // Kassa printeri nomi
   });
 
   useEffect(() => {
@@ -42,9 +43,7 @@ const Settings = () => {
         setSettings(prev => ({
             ...prev, 
             ...sData, 
-            serviceChargeValue: Number(sData.serviceChargeValue) || 0,
-            printerReceiptPort: Number(sData.printerReceiptPort) || 9100,
-            printerReceiptType: sData.printerReceiptType || 'lan'
+            serviceChargeValue: Number(sData.serviceChargeValue) || 0
         }));
         
         const kData = await ipcRenderer.invoke('get-kitchens');
@@ -53,7 +52,7 @@ const Settings = () => {
         const uData = await ipcRenderer.invoke('get-users');
         setUsers(uData);
 
-        // YANGI: Printerlarni yuklash
+        // Printerlarni yuklash
         const printers = await ipcRenderer.invoke('get-system-printers');
         setSystemPrinters(printers || []);
      } catch (err) { console.error(err); }
@@ -67,7 +66,13 @@ const Settings = () => {
   const handleSaveSettings = async () => {
     setLoading(true);
     try {
-        await window.electron.ipcRenderer.invoke('save-settings', settings);
+        // Kassa printeri uchun majburiy 'driver' turi va port 0
+        const settingsToSave = {
+            ...settings,
+            printerReceiptPort: 0, 
+            printerReceiptType: 'driver' 
+        };
+        await window.electron.ipcRenderer.invoke('save-settings', settingsToSave);
         showNotify('success', "Sozlamalar saqlandi!");
     } catch (err) { console.error(err); }
     setLoading(false);
@@ -77,9 +82,15 @@ const Settings = () => {
     e.preventDefault();
     if(!newKitchen.name) return;
     try {
-       await window.electron.ipcRenderer.invoke('save-kitchen', newKitchen);
-       // Reset
-       setNewKitchen({ name: '', printer_ip: '', printer_port: 9100, printer_type: 'lan' }); 
+       // Oshxona uchun ham majburiy 'driver' rejimi
+       const kitchenToSave = {
+           ...newKitchen,
+           printer_port: 0,
+           printer_type: 'driver'
+       };
+       await window.electron.ipcRenderer.invoke('save-kitchen', kitchenToSave);
+       
+       setNewKitchen({ name: '', printer_ip: '' }); 
        loadAllData(); 
        showNotify('success', "Oshxona qo'shildi");
     } catch (err) { console.error(err); }
@@ -166,9 +177,9 @@ const Settings = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-8">
+        {/* --- GENERAL --- */}
         {activeTab === 'general' && (
           <div className="max-w-2xl space-y-6">
-            {/* ... (Umumiy ma'lumotlar qismi o'zgarmadi) ... */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Store size={20} className="text-blue-500"/> Restoran Ma'lumotlari</h3>
               <div className="grid gap-4">
@@ -184,9 +195,9 @@ const Settings = () => {
           </div>
         )}
 
+        {/* --- USERS --- */}
         {activeTab === 'users' && (
             <div className="max-w-3xl space-y-6">
-                {/* ... (Xodimlar qismi o'zgarmadi) ... */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Users size={20} className="text-blue-500"/> Xodim Qo'shish</h3>
                     <form onSubmit={handleSaveUser} className="grid grid-cols-12 gap-4 items-end">
@@ -241,9 +252,9 @@ const Settings = () => {
             </div>
         )}
 
+        {/* --- ORDER --- */}
         {activeTab === 'order' && (
           <div className="max-w-2xl space-y-6">
-            {/* ... (Buyurtma sozlamalari o'zgarmadi) ... */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Percent size={20} className="text-green-500"/> Xizmat Haqi (Service Charge)</h3>
               <div className="grid grid-cols-2 gap-4 mb-4">
@@ -261,59 +272,31 @@ const Settings = () => {
           </div>
         )}
 
+        {/* --- KITCHENS --- */}
         {activeTab === 'kitchens' && (
           <div className="max-w-3xl space-y-6">
              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Plus size={20} className="text-blue-500"/> Yangi Oshxona Qo'shish</h3>
+                <p className="text-xs text-gray-400 mb-4">Oshxona printerini tanlang (Faqat Driver orqali ulanadi)</p>
                 
                 <form onSubmit={handleSaveKitchen} className="space-y-4">
-                    <div className="grid grid-cols-12 gap-4">
+                    <div className="grid grid-cols-12 gap-4 items-end">
                         <div className="col-span-6">
-                            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Nomi</label>
+                            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Oshxona Nomi</label>
                             <input required type="text" value={newKitchen.name} onChange={e => setNewKitchen({...newKitchen, name: e.target.value})} placeholder="Masalan: Bar" className="w-full p-3 rounded-xl border border-gray-200 outline-none focus:border-blue-500 font-bold" />
                         </div>
                         
-                        {/* Printer Turi (LAN yoki Driver) */}
-                        <div className="col-span-6">
-                            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Ulanish Turi</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button type="button" onClick={() => setNewKitchen({...newKitchen, printer_type: 'lan'})} 
-                                    className={`p-3 rounded-xl border flex items-center justify-center gap-2 font-bold text-sm transition-all ${newKitchen.printer_type === 'lan' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-500'}`}>
-                                    <Network size={16} /> LAN (IP)
-                                </button>
-                                <button type="button" onClick={() => setNewKitchen({...newKitchen, printer_type: 'driver'})} 
-                                    className={`p-3 rounded-xl border flex items-center justify-center gap-2 font-bold text-sm transition-all ${newKitchen.printer_type === 'driver' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-500'}`}>
-                                    <PcCase size={16} /> Driver (USB)
-                                </button>
-                            </div>
+                        <div className="col-span-4">
+                            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Printer Tanlash</label>
+                            <select value={newKitchen.printer_ip} onChange={e => setNewKitchen({...newKitchen, printer_ip: e.target.value})} className="w-full p-3 rounded-xl border border-gray-200 outline-none focus:border-blue-500 bg-white">
+                                <option value="">Tanlanmagan</option>
+                                {systemPrinters.map(p => (
+                                    <option key={p.name} value={p.name}>{p.name} ({p.displayName || p.name})</option>
+                                ))}
+                            </select>
                         </div>
-                    </div>
-
-                    <div className="grid grid-cols-12 gap-4 items-end">
-                        {newKitchen.printer_type === 'lan' ? (
-                            <>
-                                <div className="col-span-6">
-                                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Printer IP</label>
-                                    <input type="text" value={newKitchen.printer_ip} onChange={e => setNewKitchen({...newKitchen, printer_ip: e.target.value})} placeholder="192.168.1.200" className="w-full p-3 rounded-xl border border-gray-200 outline-none focus:border-blue-500 font-mono" />
-                                </div>
-                                <div className="col-span-3">
-                                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Port</label>
-                                    <input type="number" value={newKitchen.printer_port} onChange={e => setNewKitchen({...newKitchen, printer_port: e.target.value})} placeholder="9100" className="w-full p-3 rounded-xl border border-gray-200 outline-none focus:border-blue-500 font-mono" />
-                                </div>
-                            </>
-                        ) : (
-                            <div className="col-span-9">
-                                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Printer Tanlash</label>
-                                <select value={newKitchen.printer_ip} onChange={e => setNewKitchen({...newKitchen, printer_ip: e.target.value})} className="w-full p-3 rounded-xl border border-gray-200 outline-none focus:border-blue-500 bg-white">
-                                    <option value="">Printerni tanlang...</option>
-                                    {systemPrinters.map(p => (
-                                        <option key={p.name} value={p.name}>{p.name} ({p.displayName || p.name})</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
                         
-                        <div className="col-span-3">
+                        <div className="col-span-2">
                             <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 h-[50px]">Saqlash</button>
                         </div>
                     </div>
@@ -328,11 +311,7 @@ const Settings = () => {
                           <div>
                              <p className="font-bold text-gray-800 text-lg">{k.name}</p>
                              <div className="text-xs text-gray-500 font-mono flex items-center gap-2 mt-1">
-                                {k.printer_type === 'driver' ? (
-                                    <><PcCase size={14} className="text-blue-500"/> Driver: {k.printer_ip || 'Tanlanmagan'}</>
-                                ) : (
-                                    <><Network size={14} className="text-green-500"/> IP: {k.printer_ip}:{k.printer_port}</>
-                                )}
+                                <PcCase size={14} className="text-blue-500"/> Printer: {k.printer_ip || 'Tanlanmagan'}
                              </div>
                           </div>
                           <button onClick={() => confirmDeleteKitchen(k.id)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={20}/></button>
@@ -343,73 +322,32 @@ const Settings = () => {
           </div>
         )}
 
+        {/* --- PRINTERS (KASSA) --- */}
         {activeTab === 'printers' && (
           <div className="max-w-2xl space-y-6">
              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Printer size={20} className="text-purple-500"/> Kassa Printeri</h3>
-                <p className="text-sm text-gray-400 mb-6">Mijozga beriladigan chek uchun asosiy printer.</p>
+                <p className="text-sm text-gray-400 mb-6">Mijozga beriladigan chek uchun asosiy printerni tanlang.</p>
                 
-                <div className="mb-4">
-                    <label className="block text-xs font-bold text-gray-500 mb-2 uppercase">Ulanish Turi</label>
-                    <div className="flex gap-2">
-                        <button onClick={() => setSettings({...settings, printerReceiptType: 'lan'})} 
-                            className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 font-bold text-sm transition-all ${settings.printerReceiptType === 'lan' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-500'}`}>
-                            <Network size={16} /> LAN (IP)
-                        </button>
-                        <button onClick={() => setSettings({...settings, printerReceiptType: 'driver'})} 
-                            className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 font-bold text-sm transition-all ${settings.printerReceiptType === 'driver' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-500'}`}>
-                            <PcCase size={16} /> Driver (USB)
-                        </button>
-                    </div>
-                </div>
-
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                    {settings.printerReceiptType === 'lan' ? (
-                        <div className="flex gap-2 items-center">
-                            <div className="flex-1">
-                                <label className="block text-xs font-bold text-gray-500 mb-1">IP Manzil</label>
-                                <input 
-                                    type="text" 
-                                    name="printerReceiptIP" 
-                                    value={settings.printerReceiptIP || ''} 
-                                    onChange={handleChange} 
-                                    className="w-full p-2 rounded-lg border border-gray-300 outline-none text-sm font-mono" 
-                                    placeholder="192.168.1.100" 
-                                />
-                            </div>
-                            <div className="w-24">
-                                <label className="block text-xs font-bold text-gray-500 mb-1">Port</label>
-                                <input 
-                                    type="number" 
-                                    name="printerReceiptPort" 
-                                    value={settings.printerReceiptPort || 9100} 
-                                    onChange={handleChange} 
-                                    className="w-full p-2 rounded-lg border border-gray-300 outline-none text-sm font-mono" 
-                                    placeholder="9100" 
-                                />
-                            </div>
-                        </div>
-                    ) : (
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1">Tizim Printeri</label>
-                            <select 
-                                name="printerReceiptIP" // Eslatma: Driver nomini ham IP maydoniga saqlaymiz, chunki backendda shunday ishlatamiz
-                                value={settings.printerReceiptIP || ''} 
-                                onChange={handleChange} 
-                                className="w-full p-2 rounded-lg border border-gray-300 outline-none text-sm bg-white"
-                            >
-                                <option value="">Printerni tanlang...</option>
-                                {systemPrinters.map(p => (
-                                    <option key={p.name} value={p.name}>{p.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Tizim Printeri</label>
+                    <select 
+                        name="printerReceiptIP" 
+                        value={settings.printerReceiptIP || ''} 
+                        onChange={handleChange} 
+                        className="w-full p-2 rounded-lg border border-gray-300 outline-none text-sm bg-white"
+                    >
+                        <option value="">Printerni tanlang...</option>
+                        {systemPrinters.map(p => (
+                            <option key={p.name} value={p.name}>{p.name}</option>
+                        ))}
+                    </select>
                 </div>
              </div>
           </div>
         )}
 
+        {/* --- DATABASE --- */}
         {activeTab === 'database' && (
           <div className="max-w-2xl space-y-6">
              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-red-500">

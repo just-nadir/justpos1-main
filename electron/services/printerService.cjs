@@ -1,174 +1,275 @@
-const { ThermalPrinter, PrinterTypes, CharacterSet } = require('node-thermal-printer');
+const { BrowserWindow } = require('electron');
 const { db } = require('../database.cjs');
 
-// Printerga ulanish va chop etish funksiyasi (Universal)
-async function printToDevice(config, contentCallback) {
-  const { ip, port, type } = config;
-
-  if (!ip) {
-    console.log("⚠️ Printer IP/Nomi yo'q, chop etilmadi.");
-    return;
-  }
-
-  // Driver orqali bo'lsa, 'interface' printer nomi bo'ladi
-  // LAN orqali bo'lsa, 'tcp://IP:PORT'
-  let printerInterface = '';
-  if (type === 'driver') {
-      printerInterface = `printer:${ip}`; // node-thermal-printer sintaksisi (agar driver qo'llab-quvvatlasa)
-      // Eslatma: Windows/Linux da driver orqali chop etish uchun ba'zan qo'shimcha native modullar kerak bo'lishi mumkin.
-      // Lekin hozircha kutubxonaning o'z imkoniyatidan foydalanamiz.
-  } else {
-      printerInterface = `tcp://${ip}:${port}`;
-  }
-
-  console.log(`🖨 Ulanish: ${printerInterface} (Type: ${type})`);
-
-  const printer = new ThermalPrinter({
-    type: PrinterTypes.EPSON,
-    interface: printerInterface,
-    characterSet: CharacterSet.PC852_LATIN2,
-    removeSpecialCharacters: false,
-    options: { timeout: 3000 },
-    driver: type === 'driver' ? require('path') : undefined // Ba'zan driver talab qilinishi mumkin, hozircha oddiy
-  });
-
-  try {
-    const isConnected = await printer.isPrinterConnected();
-    if (!isConnected) {
-      console.error(`❌ Printer oflayn yoki topilmadi: ${ip}`);
-      return;
+// Sozlamalarni olish
+function getSettings() {
+    try {
+        const rows = db.prepare('SELECT * FROM settings').all();
+        return rows.reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {});
+    } catch (e) {
+        console.error("Sozlamalarni olishda xato:", e);
+        return {};
     }
-
-    // Callback orqali chek tarkibini chizish
-    contentCallback(printer);
-    
-    printer.cut();
-    await printer.execute();
-    console.log(`✅ Chop etildi: ${ip}`);
-  } catch (error) {
-    console.error("🖨 Printer xatoligi:", error);
-  }
 }
 
-function getSettings() {
-    const rows = db.prepare('SELECT * FROM settings').all();
-    return rows.reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {});
+// Yordamchi: HTML shablon yaratish (YANGILANGAN DIZAYN)
+function createHtmlTemplate(bodyContent) {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {
+                font-family: 'Courier New', Courier, monospace;
+                width: 270px; /* 80mm printer uchun standart */
+                margin: 0 auto;
+                padding: 0;
+                font-size: 12px;
+                color: #000000;
+                line-height: 1.2;
+            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .text-left { text-align: left; }
+            .bold { font-weight: bold; }
+            .uppercase { text-transform: uppercase; }
+            
+            /* Chiziqlar */
+            .line { border-bottom: 1px dashed #000000; margin: 8px 0; }
+            .double-line { border-bottom: 3px double #000000; margin: 8px 0; }
+            
+            .flex { display: flex; justify-content: space-between; }
+            .mb-1 { margin-bottom: 5px; }
+            
+            /* Sarlavha */
+            .header-title { font-size: 18px; margin-bottom: 5px; font-weight: bold; }
+            .header-info { font-size: 11px; margin-bottom: 2px; }
+            
+            /* Jadval */
+            table { width: 100%; border-collapse: collapse; margin: 5px 0; }
+            td { vertical-align: top; padding: 4px 0; }
+            .col-name { text-align: left; width: 55%; }
+            .col-qty { text-align: center; width: 15%; }
+            .col-price { text-align: right; width: 30%; }
+            
+            /* Jami hisob */
+            .total-row { font-size: 16px; font-weight: bold; margin-top: 5px; }
+            .footer-msg { font-size: 11px; margin-top: 10px; font-style: italic; }
+        </style>
+    </head>
+    <body>
+        ${bodyContent}
+        <br/>
+        <div class="text-center">.</div> 
+    </body>
+    </html>
+    `;
+}
+
+// Asosiy chop etish funksiyasi
+async function printHtml(htmlContent, printerName) {
+    const workerWindow = new BrowserWindow({
+        show: false,
+        width: 400,
+        height: 600,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    });
+
+    try {
+        const htmlBase64 = Buffer.from(htmlContent).toString('base64');
+        await workerWindow.loadURL(`data:text/html;base64,${htmlBase64}`);
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const options = {
+            silent: true,
+            printBackground: true,
+            deviceName: printerName
+        };
+
+        if (!printerName) {
+            console.warn("⚠️ Printer nomi ko'rsatilmagan, default printer ishlatiladi.");
+            delete options.deviceName;
+        } else {
+            console.log(`🖨 Chop etilmoqda (HTML): ${printerName}`);
+        }
+
+        await new Promise((resolve, reject) => {
+            workerWindow.webContents.print(options, (success, errorType) => {
+                if (!success) {
+                    reject(new Error(errorType));
+                } else {
+                    resolve();
+                }
+            });
+        });
+
+        console.log("✅ Muvaffaqiyatli chop etildi!");
+
+    } catch (error) {
+        console.error("❌ Chop etishda xatolik:", error);
+        throw error;
+    } finally {
+        workerWindow.close();
+    }
 }
 
 module.exports = {
-  // Kassa cheki (Mijoz uchun)
-  printOrderReceipt: async (orderData) => {
-    const settings = getSettings();
-    
-    // Sozlamalarda printer nomi 'printerReceiptIP' da saqlangan bo'ladi (agar driver tanlansa)
-    const config = {
-        ip: settings.printerReceiptIP,
-        port: settings.printerReceiptPort || 9100,
-        type: settings.printerReceiptType || 'lan'
-    };
+    // 1. Kassa Cheki
+    printOrderReceipt: async (orderData) => {
+        const settings = getSettings();
+        const printerName = settings.printerReceiptIP;
 
-    await printToDevice(config, (printer) => {
-        // Header
-        printer.alignCenter();
-        printer.bold(true);
-        printer.setTextSize(1, 1);
-        printer.println(orderData.restaurantName || "RESTORAN");
-        printer.bold(false);
-        printer.setTextSize(0, 0);
-        if (orderData.address) printer.println(orderData.address);
-        if (orderData.phone) printer.println(orderData.phone);
-        printer.newLine();
-        
-        // Info
-        printer.alignLeft();
-        printer.println(`Sana: ${new Date().toLocaleString()}`);
-        printer.println(`Stol: ${orderData.tableName}`);
-        printer.drawLine();
-        
-        // Items
-        printer.tableCustom([
-          { text: "Nomi", align: "LEFT", width: 0.5 },
-          { text: "Soni", align: "CENTER", width: 0.2 },
-          { text: "Summa", align: "RIGHT", width: 0.3 }
-        ]);
-        
-        orderData.items.forEach(item => {
-          printer.tableCustom([
-            { text: item.product_name, align: "LEFT", width: 0.5 },
-            { text: item.quantity.toString(), align: "CENTER", width: 0.2 },
-            { text: (item.price * item.quantity).toLocaleString(), align: "RIGHT", width: 0.3 }
-          ]);
-        });
-        printer.drawLine();
+        // Sozlamalardan ma'lumot olish
+        const restaurantName = settings.restaurantName || "RESTORAN";
+        const address = settings.address || "";
+        const phone = settings.phone || "";
+        const footerText = settings.receiptFooter || "Xaridingiz uchun rahmat!";
 
-        // Footer
-        printer.alignRight();
-        if (orderData.service > 0) printer.println(`Xizmat: ${orderData.service.toLocaleString()}`);
-        if (orderData.discount > 0) printer.println(`Chegirma: -${orderData.discount.toLocaleString()}`);
-        printer.bold(true);
-        printer.setTextSize(1, 1);
-        printer.println(`JAMI: ${orderData.total.toLocaleString()}`);
-        printer.setTextSize(0, 0);
-        
-        printer.newLine();
-        printer.alignCenter();
-        if (orderData.footer) printer.println(orderData.footer);
-        printer.println("Xaridingiz uchun rahmat!");
-    });
-  },
+        // Mahsulotlar ro'yxati
+        const itemsHtml = orderData.items.map(item => `
+            <tr>
+                <td class="col-name">${item.product_name}</td>
+                <td class="col-qty">${item.quantity}</td>
+                <td class="col-price">${(item.price * item.quantity).toLocaleString()}</td>
+            </tr>
+        `).join('');
 
-  // Oshxona cheki (Povarlar uchun)
-  printKitchenTicket: async (items, tableName) => {
-    const kitchens = db.prepare('SELECT * FROM kitchens').all();
-    
-    // Mahsulotlarni oshxona bo'yicha guruhlaymiz
-    const groupedItems = {}; 
+        // To'lov turini chiroyli chiqarish
+        const paymentMap = {
+            'cash': 'Naqd',
+            'card': 'Karta',
+            'click': 'Click/Payme',
+            'debt': 'Nasiya'
+        };
+        const paymentMethod = paymentMap[orderData.paymentMethod] || orderData.paymentMethod || 'Naqd';
 
-    items.forEach(item => {
-        const dest = item.destination || 'default';
-        if (!groupedItems[dest]) groupedItems[dest] = [];
-        groupedItems[dest].push(item);
-    });
-
-    for (const [kitchenId, kitchenItems] of Object.entries(groupedItems)) {
-        const kitchen = kitchens.find(k => String(k.id) === kitchenId);
-        
-        if (kitchen && kitchen.printer_ip) {
-            const config = {
-                ip: kitchen.printer_ip, // Bu yerda nom ham bo'lishi mumkin
-                port: kitchen.printer_port || 9100,
-                type: kitchen.printer_type || 'lan'
-            };
-
-            console.log(`👨‍🍳 Oshxonaga yuborilmoqda: ${kitchen.name}`);
+        const content = `
+            <div class="text-center">
+                <div class="header-title uppercase">${restaurantName}</div>
+                ${address ? `<div class="header-info">${address}</div>` : ''}
+                ${phone ? `<div class="header-info">Tel: ${phone}</div>` : ''}
+            </div>
             
-            await printToDevice(config, (printer) => {
-                printer.alignCenter();
-                printer.bold(true);
-                printer.setTextSize(1, 1);
-                printer.println(kitchen.name.toUpperCase()); 
-                printer.setTextSize(0, 0);
-                printer.bold(false);
-                printer.newLine();
-                
-                printer.alignLeft();
-                printer.println(`Stol: ${tableName}`);
-                printer.println(`Vaqt: ${new Date().toLocaleTimeString()}`);
-                printer.drawLine();
-                
-                printer.bold(true);
-                printer.setTextSize(1, 1);
-                kitchenItems.forEach(item => {
-                    printer.println(`${item.qty || item.quantity} x ${item.name || item.product_name}`);
-                });
-                printer.setTextSize(0, 0);
-                printer.bold(false);
-                printer.newLine();
-                printer.println("--------------------------------");
-            });
-        } else {
-            console.log(`⚠️ Oshxona topilmadi yoki Printer sozlanmagan. ID: ${kitchenId}`);
+            <div class="double-line"></div>
+            
+            <div class="flex">
+                <span>Sana:</span>
+                <span>${new Date().toLocaleString('uz-UZ')}</span>
+            </div>
+            <div class="flex">
+                <span>Stol:</span>
+                <span class="bold">${orderData.tableName}</span>
+            </div>
+            <div class="flex">
+                <span>To'lov:</span>
+                <span class="bold">${paymentMethod}</span>
+            </div>
+
+            <div class="line"></div>
+
+            <table>
+                <tr style="border-bottom: 1px solid #000;">
+                    <td class="col-name bold">Nomi</td>
+                    <td class="col-qty bold">Soni</td>
+                    <td class="col-price bold">Summa</td>
+                </tr>
+                ${itemsHtml}
+            </table>
+
+            <div class="line"></div>
+
+            <div class="flex">
+                <span>Jami summa:</span>
+                <span>${(orderData.subtotal || 0).toLocaleString()}</span>
+            </div>
+            
+            ${orderData.service > 0 ? `
+            <div class="flex">
+                <span>Xizmat:</span>
+                <span>${orderData.service.toLocaleString()}</span>
+            </div>` : ''}
+
+            ${orderData.discount > 0 ? `
+            <div class="flex">
+                <span>Chegirma:</span>
+                <span>-${orderData.discount.toLocaleString()}</span>
+            </div>` : ''}
+
+            <div class="double-line"></div>
+
+            <div class="flex total-row">
+                <span>JAMI:</span>
+                <span>${orderData.total.toLocaleString()} so'm</span>
+            </div>
+
+            <div class="text-center footer-msg">
+                ${footerText}
+            </div>
+        `;
+
+        const fullHtml = createHtmlTemplate(content);
+        await printHtml(fullHtml, printerName);
+    },
+
+    // 2. Oshxona Cheki (Runner)
+    printKitchenTicket: async (items, tableName) => {
+        const kitchens = db.prepare('SELECT * FROM kitchens').all();
+        
+        const groupedItems = {};
+        items.forEach(item => {
+            const dest = item.destination || 'default';
+            if (!groupedItems[dest]) groupedItems[dest] = [];
+            groupedItems[dest].push(item);
+        });
+
+        for (const [kitchenId, kitchenItems] of Object.entries(groupedItems)) {
+            const kitchen = kitchens.find(k => String(k.id) === kitchenId);
+            
+            if (kitchen && kitchen.printer_ip) {
+                console.log(`👨‍🍳 Oshxonaga yuborilmoqda: ${kitchen.name}`);
+
+                const itemsHtml = kitchenItems.map(item => `
+                    <tr>
+                        <td class="text-left bold" style="font-size: 16px; padding: 5px 0;">${item.name || item.product_name}</td>
+                        <td class="text-right bold" style="font-size: 18px;">x${item.qty || item.quantity}</td>
+                    </tr>
+                `).join('');
+
+                const content = `
+                    <div class="text-center">
+                        <div class="header-title" style="border: 2px solid #000; padding: 5px; display: inline-block;">${kitchen.name.toUpperCase()}</div>
+                    </div>
+                    
+                    <div class="mb-1"></div>
+
+                    <div class="flex bold" style="font-size: 16px;">
+                        <span>Stol:</span>
+                        <span>${tableName}</span>
+                    </div>
+                    <div class="flex">
+                        <span>Vaqt:</span>
+                        <span>${new Date().toLocaleTimeString('uz-UZ')}</span>
+                    </div>
+
+                    <div class="line"></div>
+
+                    <table>
+                        ${itemsHtml}
+                    </table>
+
+                    <div class="line"></div>
+                `;
+
+                const fullHtml = createHtmlTemplate(content);
+                await printHtml(fullHtml, kitchen.printer_ip);
+            } else {
+                console.log(`⚠️ Oshxona topilmadi yoki Printer sozlanmagan. ID: ${kitchenId}`);
+            }
         }
     }
-  }
 };
