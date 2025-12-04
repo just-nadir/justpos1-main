@@ -2,24 +2,40 @@ const { ThermalPrinter, PrinterTypes, CharacterSet } = require('node-thermal-pri
 const { db } = require('../database.cjs');
 
 // Printerga ulanish va chop etish funksiyasi (Universal)
-async function printToDevice(ip, port, contentCallback) {
+async function printToDevice(config, contentCallback) {
+  const { ip, port, type } = config;
+
   if (!ip) {
-    console.log("⚠️ Printer IP yo'q, chop etilmadi.");
+    console.log("⚠️ Printer IP/Nomi yo'q, chop etilmadi.");
     return;
   }
 
+  // Driver orqali bo'lsa, 'interface' printer nomi bo'ladi
+  // LAN orqali bo'lsa, 'tcp://IP:PORT'
+  let printerInterface = '';
+  if (type === 'driver') {
+      printerInterface = `printer:${ip}`; // node-thermal-printer sintaksisi (agar driver qo'llab-quvvatlasa)
+      // Eslatma: Windows/Linux da driver orqali chop etish uchun ba'zan qo'shimcha native modullar kerak bo'lishi mumkin.
+      // Lekin hozircha kutubxonaning o'z imkoniyatidan foydalanamiz.
+  } else {
+      printerInterface = `tcp://${ip}:${port}`;
+  }
+
+  console.log(`🖨 Ulanish: ${printerInterface} (Type: ${type})`);
+
   const printer = new ThermalPrinter({
     type: PrinterTypes.EPSON,
-    interface: `tcp://${ip}:${port}`,
+    interface: printerInterface,
     characterSet: CharacterSet.PC852_LATIN2,
     removeSpecialCharacters: false,
-    options: { timeout: 3000 }
+    options: { timeout: 3000 },
+    driver: type === 'driver' ? require('path') : undefined // Ba'zan driver talab qilinishi mumkin, hozircha oddiy
   });
 
   try {
     const isConnected = await printer.isPrinterConnected();
     if (!isConnected) {
-      console.error(`❌ Printer oflayn: ${ip}`);
+      console.error(`❌ Printer oflayn yoki topilmadi: ${ip}`);
       return;
     }
 
@@ -43,10 +59,15 @@ module.exports = {
   // Kassa cheki (Mijoz uchun)
   printOrderReceipt: async (orderData) => {
     const settings = getSettings();
-    const ip = settings.printerReceiptIP;
-    const port = settings.printerReceiptPort || 9100;
+    
+    // Sozlamalarda printer nomi 'printerReceiptIP' da saqlangan bo'ladi (agar driver tanlansa)
+    const config = {
+        ip: settings.printerReceiptIP,
+        port: settings.printerReceiptPort || 9100,
+        type: settings.printerReceiptType || 'lan'
+    };
 
-    await printToDevice(ip, port, (printer) => {
+    await printToDevice(config, (printer) => {
         // Header
         printer.alignCenter();
         printer.bold(true);
@@ -98,31 +119,34 @@ module.exports = {
 
   // Oshxona cheki (Povarlar uchun)
   printKitchenTicket: async (items, tableName) => {
-    // 1. Barcha oshxonalarni olamiz
     const kitchens = db.prepare('SELECT * FROM kitchens').all();
     
-    // 2. Mahsulotlarni oshxona bo'yicha guruhlaymiz
-    const groupedItems = {}; // { '1': [item1, item2], '2': [item3] }
+    // Mahsulotlarni oshxona bo'yicha guruhlaymiz
+    const groupedItems = {}; 
 
     items.forEach(item => {
-        // Agar destination bo'lmasa, 'unknown' ga tushadi (yoki default oshxonaga)
         const dest = item.destination || 'default';
         if (!groupedItems[dest]) groupedItems[dest] = [];
         groupedItems[dest].push(item);
     });
 
-    // 3. Har bir guruh uchun printerga yuboramiz
     for (const [kitchenId, kitchenItems] of Object.entries(groupedItems)) {
         const kitchen = kitchens.find(k => String(k.id) === kitchenId);
         
         if (kitchen && kitchen.printer_ip) {
+            const config = {
+                ip: kitchen.printer_ip, // Bu yerda nom ham bo'lishi mumkin
+                port: kitchen.printer_port || 9100,
+                type: kitchen.printer_type || 'lan'
+            };
+
             console.log(`👨‍🍳 Oshxonaga yuborilmoqda: ${kitchen.name}`);
             
-            await printToDevice(kitchen.printer_ip, kitchen.printer_port || 9100, (printer) => {
+            await printToDevice(config, (printer) => {
                 printer.alignCenter();
                 printer.bold(true);
                 printer.setTextSize(1, 1);
-                printer.println(kitchen.name.toUpperCase()); // "BAR" yoki "OSHXONA"
+                printer.println(kitchen.name.toUpperCase()); 
                 printer.setTextSize(0, 0);
                 printer.bold(false);
                 printer.newLine();
@@ -135,7 +159,6 @@ module.exports = {
                 printer.bold(true);
                 printer.setTextSize(1, 1);
                 kitchenItems.forEach(item => {
-                    // Masalan: "2 x Osh"
                     printer.println(`${item.qty || item.quantity} x ${item.name || item.product_name}`);
                 });
                 printer.setTextSize(0, 0);
@@ -144,7 +167,7 @@ module.exports = {
                 printer.println("--------------------------------");
             });
         } else {
-            console.log(`⚠️ Oshxona topilmadi yoki IP yo'q. ID: ${kitchenId}`);
+            console.log(`⚠️ Oshxona topilmadi yoki Printer sozlanmagan. ID: ${kitchenId}`);
         }
     }
   }

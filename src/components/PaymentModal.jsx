@@ -12,7 +12,7 @@ const PaymentModal = ({ isOpen, onClose, totalAmount, onPay, selectedCustomer })
     { id: 'cash', label: 'Naqd', icon: <Banknote size={24} /> },
     { id: 'card', label: 'Karta', icon: <CreditCard size={24} /> },
     { id: 'click', label: 'Click / Payme', icon: <Smartphone size={24} /> },
-    // YANGI: Nasiya
+    // Nasiya
     { id: 'debt', label: 'Nasiya (Qarz)', icon: <FileText size={24} /> },
   ];
 

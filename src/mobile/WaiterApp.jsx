@@ -7,7 +7,7 @@ import { useSocketData } from '../hooks/useSocketData';
 import { useCart } from '../hooks/useCart';
 import { useMenu } from '../hooks/useMenu';
 import MobilePinLogin from './MobilePinLogin'; 
-import ConfirmModal from '../components/ConfirmModal'; // Desktopdagini ishlatamiz
+import ConfirmModal from '../components/ConfirmModal'; 
 
 const WaiterApp = () => {
   const [user, setUser] = useState(null); 
@@ -19,7 +19,7 @@ const WaiterApp = () => {
   // Modals & Notifications
   const [showConfirmLogout, setShowConfirmLogout] = useState(false);
   const [showConfirmOrder, setShowConfirmOrder] = useState(false);
-  const [toast, setToast] = useState(null); // {type: 'success'|'error', msg: ''}
+  const [toast, setToast] = useState(null); 
 
   const { tables, serviceType, loadTables, API_URL } = useSocketData();
   const { cart, addToCart, removeFromCart, clearCart, cartTotal, cartCount } = useCart();
@@ -141,7 +141,6 @@ const WaiterApp = () => {
       <div className="min-h-screen bg-gray-100 pb-20 relative">
         <GuestModal />
         
-        {/* Toast */}
         {toast && (
             <div className={`fixed top-4 left-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl text-white font-bold flex items-center justify-center gap-2 animate-in slide-in-from-top ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-500'}`}>
                 {toast.type === 'success' ? <CheckCircle /> : <AlertTriangle />} {toast.msg}
@@ -200,7 +199,6 @@ const WaiterApp = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col h-screen overflow-hidden relative">
       <GuestModal />
       
-      {/* Confirm Order Modal */}
       <ConfirmModal 
           isOpen={showConfirmOrder}
           onClose={() => setShowConfirmOrder(false)}

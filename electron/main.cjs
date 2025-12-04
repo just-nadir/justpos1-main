@@ -61,7 +61,6 @@ function createWindow() {
   // ----------------------------------------------
 
   // Development rejimida localhost, Production da build fayl
-  // Eslatma: Sizning kodingizda hardcoded localhost turibdi, keyinchalik buni to'g'irlaymiz.
   win.loadURL('http://localhost:5173');
   
   win.webContents.on('render-process-gone', (event, details) => {
@@ -111,6 +110,18 @@ ipcMain.handle('get-kitchens', () => settingsController.getKitchens());
 
 ipcMain.handle('save-kitchen', (e, data) => settingsController.saveKitchen(data));
 ipcMain.handle('delete-kitchen', (e, id) => settingsController.deleteKitchen(id));
+
+// YANGI: Tizimdagi printerlarni olish
+ipcMain.handle('get-system-printers', async () => {
+    const wins = BrowserWindow.getAllWindows();
+    if (wins.length === 0) return [];
+    // Asosiy oynadan printerlar ro'yxatini so'raymiz
+    const printers = await wins[0].webContents.getPrintersAsync();
+    return printers;
+});
+
+// YANGI: Backup DB
+ipcMain.handle('backup-db', () => settingsController.backupDB());
 
 ipcMain.handle('get-users', () => staffController.getUsers());
 ipcMain.handle('save-user', (e, user) => staffController.saveUser(user));
