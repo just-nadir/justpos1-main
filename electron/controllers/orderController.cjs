@@ -84,8 +84,6 @@ module.exports = {
            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
            // --- LOGIKA: Stol egasini yangilash ---
-           // Agar stol bo'sh bo'lsa, yoki egasi yo'q bo'lsa, yoki "Kassir/Noma'lum" bo'lsa, 
-           // yangi buyurtma bergan ofitsiant nomiga o'tkazib yuboramiz.
            const isOrphan = !currentTable.waiter_id || currentTable.waiter_id === 0;
            const isUnknown = currentTable.waiter_name === "Noma'lum" || currentTable.waiter_name === "Kassir";
            const isFree = currentTable.status === 'free';
@@ -94,7 +92,6 @@ module.exports = {
                db.prepare(`UPDATE tables SET status = 'occupied', total_amount = ?, start_time = COALESCE(start_time, ?), waiter_id = ?, waiter_name = ? WHERE id = ?`)
                  .run(newTotal, time, waiterId, waiterName, tableId);
            } else {
-               // Agar stol boshqa ofitsiantda bo'lsa, faqat summani yangilaymiz
                db.prepare(`UPDATE tables SET total_amount = ? WHERE id = ?`)
                  .run(newTotal, tableId);
            }
@@ -107,11 +104,8 @@ module.exports = {
         // Printerga yuborish
         setTimeout(async () => {
             try {
-                // Printerga boradigan ismni aniqlash
                 const freshTable = db.prepare('SELECT name, waiter_name FROM tables WHERE id = ?').get(tableId);
                 const tableName = freshTable ? freshTable.name : "Stol";
-                
-                // Agar 'waiterName' bizda aniq bo'lsa, o'shani chiqaramiz.
                 const nameToPrint = (waiterName && waiterName !== "Noma'lum") ? waiterName : (freshTable.waiter_name || "Kassir");
 
                 await printerService.printKitchenTicket(items, tableName, checkNumber, nameToPrint);
@@ -119,7 +113,6 @@ module.exports = {
                 log.error("Oshxona printeri xatosi:", printErr);
             }
         }, 100);
-
         return res;
     } catch (err) {
         log.error("addBulkItems xatosi:", err);
@@ -127,7 +120,7 @@ module.exports = {
     }
   },
 
-  // 3. Checkout (To'lov)
+  // 3. Checkout (To'lov) - YANGILANDI: guest_count saqlanadi
   checkout: async (data) => {
     const { tableId, total, subtotal, discount, paymentMethod, customerId, items } = data;
     const date = new Date().toISOString();
@@ -135,13 +128,17 @@ module.exports = {
     try {
         let checkNumber = 0;
         let waiterName = "";
+        let guestCount = 0; // YANGI
 
         const performCheckout = db.transaction(() => {
-          const table = db.prepare('SELECT current_check_number, waiter_name FROM tables WHERE id = ?').get(tableId);
+          // YANGI: Stol ma'lumotlari ichida 'guests' ni ham olamiz
+          const table = db.prepare('SELECT current_check_number, waiter_name, guests FROM tables WHERE id = ?').get(tableId);
           checkNumber = table ? table.current_check_number : 0;
           waiterName = table ? table.waiter_name : "Kassir";
+          guestCount = table ? table.guests : 0; // Mehmon sonini olish
 
-          db.prepare(`INSERT INTO sales (date, total_amount, subtotal, discount, payment_method, customer_id, items_json, check_number, waiter_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(date, total, subtotal, discount, paymentMethod, customerId, JSON.stringify(items), checkNumber, waiterName);
+          // Sales jadvaliga guest_count ni ham yozamiz
+          db.prepare(`INSERT INTO sales (date, total_amount, subtotal, discount, payment_method, customer_id, items_json, check_number, waiter_name, guest_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(date, total, subtotal, discount, paymentMethod, customerId, JSON.stringify(items), checkNumber, waiterName, guestCount);
           
           if (paymentMethod === 'debt' && customerId) {
             db.prepare('UPDATE customers SET debt = debt + ? WHERE id = ?').run(total, customerId);
@@ -180,7 +177,6 @@ module.exports = {
                 log.error("Kassa printeri xatosi:", err);
             }
         }, 100);
-
         return res;
     } catch (err) {
         log.error("Checkout xatosi:", err);

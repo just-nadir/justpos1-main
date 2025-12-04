@@ -8,7 +8,6 @@ const db = new Database(dbPath, { verbose: console.log });
 db.pragma('journal_mode = WAL');
 
 const listeners = [];
-
 function onChange(callback) {
   listeners.push(callback);
 }
@@ -19,7 +18,6 @@ function notify(event, data) {
 
 function initDB() {
   db.exec(`CREATE TABLE IF NOT EXISTS halls (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`);
-  
   // Tables jadvali (waiter_id va waiter_name qo'shilgan)
   db.exec(`CREATE TABLE IF NOT EXISTS tables (
       id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -34,11 +32,9 @@ function initDB() {
       waiter_name TEXT,
       FOREIGN KEY(hall_id) REFERENCES halls(id) ON DELETE CASCADE
   )`);
-  
   db.exec(`CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, type TEXT DEFAULT 'standard', value INTEGER DEFAULT 0, balance REAL DEFAULT 0, birthday TEXT, debt REAL DEFAULT 0)`);
   db.exec(`CREATE TABLE IF NOT EXISTS debt_history (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER, amount REAL, type TEXT, date TEXT, comment TEXT, FOREIGN KEY(customer_id) REFERENCES customers(id))`);
   db.exec(`CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`);
-  
   db.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,10 +47,8 @@ function initDB() {
       FOREIGN KEY(category_id) REFERENCES categories(id)
     )
   `);
-  
   db.exec(`CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, table_id INTEGER, product_name TEXT, price REAL, quantity INTEGER, destination TEXT, FOREIGN KEY(table_id) REFERENCES tables(id))`);
-  
-  // Sales jadvali (waiter_name qo'shilgan tarix uchun)
+  // Sales jadvali (waiter_name va guest_count qo'shilgan)
   db.exec(`CREATE TABLE IF NOT EXISTS sales (
       id INTEGER PRIMARY KEY AUTOINCREMENT, 
       date TEXT, 
@@ -65,11 +59,10 @@ function initDB() {
       customer_id INTEGER, 
       items_json TEXT, 
       check_number INTEGER DEFAULT 0,
-      waiter_name TEXT
+      waiter_name TEXT,
+      guest_count INTEGER DEFAULT 0
   )`);
-  
   db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`);
-  
   db.exec(`
     CREATE TABLE IF NOT EXISTS kitchens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +72,6 @@ function initDB() {
       printer_type TEXT DEFAULT 'driver'
     )
   `);
-
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,7 +80,6 @@ function initDB() {
       role TEXT DEFAULT 'waiter'
     )
   `);
-
   // --- MIGRATSIYA ---
   try {
     // 1. Kitchens printer_type
@@ -109,13 +100,17 @@ function initDB() {
         db.prepare(`ALTER TABLE tables ADD COLUMN waiter_name TEXT`).run();
     }
 
-    // 3. Sales check_number, waiter_name
+    // 3. Sales check_number, waiter_name, guest_count
     const colsSales = db.prepare(`PRAGMA table_info(sales)`).all();
     if (!colsSales.some(c => c.name === 'check_number')) {
         db.prepare(`ALTER TABLE sales ADD COLUMN check_number INTEGER DEFAULT 0`).run();
     }
     if (!colsSales.some(c => c.name === 'waiter_name')) {
         db.prepare(`ALTER TABLE sales ADD COLUMN waiter_name TEXT`).run();
+    }
+    // YANGI: Guest Count migratsiyasi
+    if (!colsSales.some(c => c.name === 'guest_count')) {
+        db.prepare(`ALTER TABLE sales ADD COLUMN guest_count INTEGER DEFAULT 0`).run();
     }
 
   } catch (err) {

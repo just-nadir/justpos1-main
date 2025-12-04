@@ -49,7 +49,7 @@ const Reports = () => {
   const exportToCSV = () => {
     if (salesData.length === 0) return;
 
-    let headers = "ID,Sana,Vaqt,Stol,Ofitsiant,To'lov Turi,Summa\n";
+    let headers = "ID,Sana,Vaqt,Stol,Ofitsiant,Mehmonlar,To'lov Turi,Summa\n";
     let csvContent = salesData.map(sale => {
       const date = new Date(sale.date);
       return [
@@ -58,6 +58,7 @@ const Reports = () => {
         date.toLocaleTimeString(),
         `"${sale.items_json ? JSON.parse(sale.items_json)[0]?.destination || 'Stol' : 'Stol'}"`, // Stol raqami json ichida bo'lmasa oddiy
         `"${sale.waiter_name || 'Kassir'}"`,
+        sale.guest_count || 0,
         sale.payment_method,
         sale.total_amount
       ].join(",");
@@ -86,15 +87,31 @@ const Reports = () => {
       const amount = sale.total_amount || 0;
       totalRevenue += amount;
 
+      // Xizmat haqi (Service Charge) ni hisoblash
+      // Formula: Service = Total - Subtotal + Discount
+      const subtotal = sale.subtotal || amount; // Ehtiyot shart
+      const discount = sale.discount || 0;
+      const serviceCharge = amount - subtotal + discount;
+
       // Payment Method Stats
       const method = sale.payment_method || 'naqd';
       methodMap[method] = (methodMap[method] || 0) + amount;
 
-      // Waiter Stats
+      // Waiter Stats (Updated)
       const waiter = sale.waiter_name || "Noma'lum";
-      if (!waiterMap[waiter]) waiterMap[waiter] = { name: waiter, revenue: 0, count: 0 };
+      if (!waiterMap[waiter]) {
+          waiterMap[waiter] = { 
+              name: waiter, 
+              revenue: 0, 
+              count: 0, 
+              guests: 0, // Mehmonlar soni
+              service: 0 // Xizmat haqi
+          };
+      }
       waiterMap[waiter].revenue += amount;
       waiterMap[waiter].count += 1;
+      waiterMap[waiter].guests += (sale.guest_count || 0);
+      waiterMap[waiter].service += serviceCharge;
 
       // Hourly Stats
       const hour = new Date(sale.date).getHours();
@@ -220,17 +237,17 @@ const Reports = () => {
     </div>
   );
 
-  // 2. STAFF TAB
+  // 2. STAFF TAB (YANGILANDI)
   const renderStaff = () => (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in duration-300">
       <table className="w-full text-left">
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
             <th className="px-6 py-4 font-bold text-gray-600 text-sm">Ofitsiant Ismi</th>
-            <th className="px-6 py-4 font-bold text-gray-600 text-sm text-center">Cheklar Soni</th>
-            <th className="px-6 py-4 font-bold text-gray-600 text-sm text-center">O'rtacha Chek</th>
+            <th className="px-6 py-4 font-bold text-gray-600 text-sm text-center">Cheklar</th>
+            <th className="px-6 py-4 font-bold text-gray-600 text-sm text-center">Mehmonlar</th>
+            <th className="px-6 py-4 font-bold text-gray-600 text-sm text-right">Xizmat Haqi</th>
             <th className="px-6 py-4 font-bold text-gray-600 text-sm text-right">Jami Savdo</th>
-            <th className="px-6 py-4 font-bold text-gray-600 text-sm text-right">Ulushi</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -243,13 +260,9 @@ const Reports = () => {
                 {w.name}
               </td>
               <td className="px-6 py-4 text-center text-gray-600">{w.count} ta</td>
-              <td className="px-6 py-4 text-center font-medium text-blue-600">{Math.round(w.revenue / w.count).toLocaleString()}</td>
+              <td className="px-6 py-4 text-center font-bold text-blue-600">{w.guests} kishi</td>
+              <td className="px-6 py-4 text-right font-medium text-orange-600">{Math.round(w.service).toLocaleString()}</td>
               <td className="px-6 py-4 text-right font-bold text-gray-800">{w.revenue.toLocaleString()}</td>
-              <td className="px-6 py-4 text-right">
-                <span className="inline-block px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-700">
-                  {((w.revenue / stats.totalRevenue) * 100).toFixed(1)}%
-                </span>
-              </td>
             </tr>
           ))}
           {stats.waiters.length === 0 && <tr><td colSpan="5" className="p-8 text-center text-gray-400">Ma'lumot yo'q</td></tr>}
@@ -295,6 +308,7 @@ const Reports = () => {
             <th className="px-6 py-4 font-bold text-gray-600 text-sm w-20">#Chek</th>
             <th className="px-6 py-4 font-bold text-gray-600 text-sm">Vaqt</th>
             <th className="px-6 py-4 font-bold text-gray-600 text-sm">Ofitsiant</th>
+            <th className="px-6 py-4 font-bold text-gray-600 text-sm">Mehmon</th>
             <th className="px-6 py-4 font-bold text-gray-600 text-sm">Mijoz</th>
             <th className="px-6 py-4 font-bold text-gray-600 text-sm">To'lov</th>
             <th className="px-6 py-4 font-bold text-gray-600 text-sm text-right">Summa</th>
@@ -309,6 +323,7 @@ const Reports = () => {
                 <div className="text-xs text-gray-400">{new Date(sale.date).toLocaleDateString()}</div>
               </td>
               <td className="px-6 py-4 font-medium text-gray-800">{sale.waiter_name || "Kassir"}</td>
+              <td className="px-6 py-4 text-center text-sm font-bold text-blue-600">{sale.guest_count || '-'}</td>
               <td className="px-6 py-4 text-sm text-gray-600">{sale.customer_id ? "Mijoz (ID: "+sale.customer_id+")" : "-"}</td>
               <td className="px-6 py-4">
                 <span className={`px-2 py-1 rounded text-xs font-bold uppercase
@@ -321,7 +336,7 @@ const Reports = () => {
               <td className="px-6 py-4 text-right font-black text-gray-800">{sale.total_amount?.toLocaleString()}</td>
             </tr>
           ))}
-          {salesData.length === 0 && <tr><td colSpan="6" className="p-8 text-center text-gray-400">Hech qanday savdo tarixi yo'q</td></tr>}
+          {salesData.length === 0 && <tr><td colSpan="7" className="p-8 text-center text-gray-400">Hech qanday savdo tarixi yo'q</td></tr>}
         </tbody>
       </table>
     </div>
