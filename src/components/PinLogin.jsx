@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Delete, Lock } from 'lucide-react';
+import { useGlobal } from '../context/GlobalContext'; // YANGI
 
-const PinLogin = ({ onLogin }) => {
+const PinLogin = () => {
+  const { login } = useGlobal(); // Contextdan olish
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,14 +30,14 @@ const PinLogin = ({ onLogin }) => {
         const { ipcRenderer } = window.electron;
         const user = await ipcRenderer.invoke('login', pin);
         
-        // YANGI: Ofitsiantlarni bloklash
+        // Ofitsiantlarni bloklash (Desktopda faqat Admin/Kassir)
         if (user.role === 'waiter') {
             setError("Ofitsiantlar mobil ilovadan foydalanishi kerak!");
             setPin('');
             return;
         }
 
-        onLogin(user); // Muvaffaqiyatli
+        login(user); // Global Context orqali login qilish
       }
     } catch (err) {
       setError("PIN kod noto'g'ri!");

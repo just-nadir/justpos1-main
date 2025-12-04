@@ -1,13 +1,15 @@
 import React from 'react';
-import { HashRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'; // Navigate qo'shildi
 import DesktopLayout from './components/DesktopLayout';
 import WaiterApp from './mobile/WaiterApp';
+// Context yo'q joylarda prop-drilling hozircha qoladi, 
+// lekin biz keyingi bosqichda DesktopLayout ichida useGlobal() ni ishlatamiz.
 
 function App() {
   return (
     <Router>
       <Routes>
-        {/* Asosiy Desktop ilova (Kassir) */}
+        {/* Asosiy Desktop ilova */}
         <Route path="/" element={<DesktopLayout />} />
         
         {/* Mobil Ofitsiant ilovasi */}

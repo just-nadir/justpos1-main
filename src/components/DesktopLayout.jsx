@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
+import { useGlobal } from '../context/GlobalContext'; // YANGI
 import Sidebar from './Sidebar';
 import TablesGrid from './TablesGrid';
 import OrderSummary from './OrderSummary';
@@ -9,20 +10,26 @@ import CustomersManagement from './CustomersManagement';
 import DebtorsManagement from './DebtorsManagement';
 import Reports from './Reports';
 import Settings from './Settings';
-import Marketing from './Marketing'; // YANGI
+import Marketing from './Marketing'; 
 import PinLogin from './PinLogin';
 
 const DesktopLayout = () => {
-  const [user, setUser] = useState(null); 
+  const { user, logout, loading } = useGlobal(); // Contextdan ma'lumot olish
   const [activePage, setActivePage] = useState('pos');
   const [selectedTable, setSelectedTable] = useState(null);
 
+  // Yuklanish holati (Context ishga tushgunicha)
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center text-gray-500 font-bold">Yuklanmoqda...</div>;
+  }
+
+  // Agar user bo'lmasa, Login ekranini ko'rsatish
   if (!user) {
-    return <PinLogin onLogin={(loggedInUser) => setUser(loggedInUser)} />;
+    return <PinLogin />; // Prop kerak emas, PinLogin o'zi context bilan ishlaydi
   }
 
   const handleLogout = () => {
-    setUser(null);
+    logout(); // Contextdagi logout funksiyasini chaqiramiz
     setSelectedTable(null);
     setActivePage('pos');
   };
@@ -55,7 +62,7 @@ const DesktopLayout = () => {
       case 'customers': return <CustomersManagement />;
       case 'debtors': return <DebtorsManagement />;
       case 'reports': return <Reports />;
-      case 'marketing': return <Marketing />; // YANGI
+      case 'marketing': return <Marketing />;
       case 'settings': return <Settings />;
       default: return <div>Sahifa topilmadi</div>;
     }

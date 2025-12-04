@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Clock, Receipt, Hash, User } from 'lucide-react';
+import { useIpcListener } from '../hooks/useIpcListener'; // YANGI HOOK
 
 const TablesGrid = ({ onSelectTable }) => {
   const [tables, setTables] = useState([]);
@@ -7,40 +8,47 @@ const TablesGrid = ({ onSelectTable }) => {
   const [activeHallId, setActiveHallId] = useState('all'); 
   const [loading, setLoading] = useState(true);
 
+  // Ma'lumotlarni yuklash
   const loadData = async () => {
     try {
       if (window.electron && window.electron.ipcRenderer) {
-        const hallsData = await window.electron.ipcRenderer.invoke('get-halls');
-        setHalls(hallsData);
-        const tablesData = await window.electron.ipcRenderer.invoke('get-tables');
-        setTables(tablesData);
+        // Promise.all orqali ikkalasini parallel yuklaymiz (Tezlik oshadi)
+        const [hallsData, tablesData] = await Promise.all([
+            window.electron.ipcRenderer.invoke('get-halls'),
+            window.electron.ipcRenderer.invoke('get-tables')
+        ]);
+        
+        setHalls(hallsData || []);
+        setTables(tablesData || []);
       }
-      setLoading(false);
     } catch (error) {
       console.error("Xatolik:", error);
+    } finally {
       setLoading(false);
     }
   };
 
+  // 1. Dastlabki yuklash
   useEffect(() => {
     loadData();
-    let cleanup = () => {};
-    if (window.electron && window.electron.ipcRenderer) {
-        cleanup = window.electron.ipcRenderer.on('db-change', (event, data) => {
-            if (data.type === 'tables' || data.type === 'sales' || data.type === 'table-items') {
-                loadData();
-            }
-        });
-    }
-    return () => cleanup();
   }, []);
 
+  // 2. Real-vaqt yangilanishi (YANGI HOOK BILAN)
+  // 'db-change' kanali orqali xabar kelsa, va u bizga kerakli turda bo'lsa -> yangilaymiz
+  useIpcListener('db-change', (event, data) => {
+      if (['tables', 'sales', 'table-items'].includes(data.type)) {
+          loadData();
+      }
+  });
+
+  // Filterlash logikasi
   const filteredTables = tables.filter(table => {
     const isActiveStatus = table.status !== 'free'; 
     const isHallMatch = activeHallId === 'all' || table.hall_id === activeHallId;
     return isActiveStatus && isHallMatch;
   });
 
+  // Dizayn yordamchilari
   const getStatusColor = (status) => {
     switch (status) {
       case 'occupied': return 'bg-white border-l-4 border-blue-500';
@@ -90,7 +98,6 @@ const TablesGrid = ({ onSelectTable }) => {
             <div 
               key={table.id} 
               onClick={() => onSelectTable(table)}
-              // DIZAYN TUZATILDI: h-auto va min-h berildi, flex layout to'g'irlandi
               className={`p-4 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between h-auto min-h-[170px] ${getStatusColor(table.status)}`}
             >
               <div className="flex flex-col gap-2">
