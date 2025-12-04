@@ -1,15 +1,15 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 
-// Context yaratamiz
 const GlobalContext = createContext();
 
-// Provider komponenti
 export const GlobalProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // Tizimga kirgan foydalanuvchi
-  const [settings, setSettings] = useState({}); // Umumiy sozlamalar
+  const [user, setUser] = useState(null);
+  const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(true);
+  
+  // YANGI: Toast (Xabarnoma) uchun state
+  const [toast, setToast] = useState(null);
 
-  // Dastlabki yuklashlar
   useEffect(() => {
     const initApp = async () => {
       if (window.electron) {
@@ -28,12 +28,16 @@ export const GlobalProvider = ({ children }) => {
     initApp();
   }, []);
 
-  // Login funksiyasi
+  // YANGI: Toast ko'rsatish funksiyasi (3 soniyadan keyin o'chadi)
+  const showToast = (type, msg) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const login = (userData) => {
     setUser(userData);
   };
 
-  // Logout funksiyasi
   const logout = () => {
     setUser(null);
   };
@@ -43,7 +47,9 @@ export const GlobalProvider = ({ children }) => {
     login,
     logout,
     settings,
-    loading
+    loading,
+    toast,      // Export qilamiz
+    showToast   // Export qilamiz
   };
 
   return (
@@ -53,7 +59,6 @@ export const GlobalProvider = ({ children }) => {
   );
 };
 
-// Hook (oson ishlatish uchun)
 export const useGlobal = () => {
   const context = useContext(GlobalContext);
   if (!context) {

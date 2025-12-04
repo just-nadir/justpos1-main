@@ -32,7 +32,6 @@ module.exports = {
            const currentTable = db.prepare('SELECT total_amount, waiter_name FROM tables WHERE id = ?').get(tableId);
            const newTotal = (currentTable ? currentTable.total_amount : 0) + (price * quantity);
            
-           // Agar ofitsiant biriktirilmagan bo'lsa, 'Kassir' deb yozamiz
            let waiterName = currentTable.waiter_name;
            if (!waiterName || waiterName === 'Noma\'lum') {
                waiterName = 'Kassir';
@@ -52,19 +51,16 @@ module.exports = {
     }
   },
 
-  // 2. MOBIL OFITSIANT (YANGILANDI)
+  // 2. MOBIL OFITSIANT
   addBulkItems: (tableId, items, waiterId) => {
     try {
         let checkNumber = 0;
         let waiterName = "Noma'lum";
 
-        // 1-QADAM: Ofitsiant ismini ID orqali aniqlaymiz
         if (waiterId) {
             const user = db.prepare('SELECT name FROM users WHERE id = ?').get(waiterId);
             if (user) {
                 waiterName = user.name;
-            } else {
-                console.warn(`Ofitsiant topilmadi ID: ${waiterId}`);
             }
         }
 
@@ -83,7 +79,6 @@ module.exports = {
            const newTotal = (currentTable ? currentTable.total_amount : 0) + additionalTotal;
            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-           // --- LOGIKA: Stol egasini yangilash ---
            const isOrphan = !currentTable.waiter_id || currentTable.waiter_id === 0;
            const isUnknown = currentTable.waiter_name === "Noma'lum" || currentTable.waiter_name === "Kassir";
            const isFree = currentTable.status === 'free';
@@ -111,6 +106,8 @@ module.exports = {
                 await printerService.printKitchenTicket(items, tableName, checkNumber, nameToPrint);
             } catch (printErr) {
                 log.error("Oshxona printeri xatosi:", printErr);
+                // YANGI: Xatoni frontendga yuborish
+                notify('printer-error', `Oshxona printeri: ${printErr.message}`);
             }
         }, 100);
         return res;
@@ -120,7 +117,7 @@ module.exports = {
     }
   },
 
-  // 3. Checkout (To'lov) - YANGILANDI: guest_count saqlanadi
+  // 3. Checkout (To'lov)
   checkout: async (data) => {
     const { tableId, total, subtotal, discount, paymentMethod, customerId, items } = data;
     const date = new Date().toISOString();
@@ -128,25 +125,22 @@ module.exports = {
     try {
         let checkNumber = 0;
         let waiterName = "";
-        let guestCount = 0; // YANGI
+        let guestCount = 0;
 
         const performCheckout = db.transaction(() => {
-          // YANGI: Stol ma'lumotlari ichida 'guests' ni ham olamiz
           const table = db.prepare('SELECT current_check_number, waiter_name, guests FROM tables WHERE id = ?').get(tableId);
           checkNumber = table ? table.current_check_number : 0;
           waiterName = table ? table.waiter_name : "Kassir";
-          guestCount = table ? table.guests : 0; // Mehmon sonini olish
+          guestCount = table ? table.guests : 0;
 
-          // Sales jadvaliga guest_count ni ham yozamiz
           db.prepare(`INSERT INTO sales (date, total_amount, subtotal, discount, payment_method, customer_id, items_json, check_number, waiter_name, guest_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(date, total, subtotal, discount, paymentMethod, customerId, JSON.stringify(items), checkNumber, waiterName, guestCount);
           
           if (paymentMethod === 'debt' && customerId) {
-            db.prepare('UPDATE customers SET debt = debt + ? WHERE id = ?').run(total, customerId);
-            db.prepare('INSERT INTO debt_history (customer_id, amount, type, date, comment) VALUES (?, ?, ?, ?, ?)').run(customerId, total, 'debt', date, `Savdo #${checkNumber} (${waiterName})`);
+             db.prepare('UPDATE customers SET debt = debt + ? WHERE id = ?').run(total, customerId);
+             db.prepare('INSERT INTO debt_history (customer_id, amount, type, date, comment) VALUES (?, ?, ?, ?, ?)').run(customerId, total, 'debt', date, `Savdo #${checkNumber} (${waiterName})`);
           }
           
           db.prepare('DELETE FROM order_items WHERE table_id = ?').run(tableId);
-          // Stolni to'liq tozalash
           db.prepare("UPDATE tables SET status = 'free', guests = 0, start_time = NULL, total_amount = 0, current_check_number = 0, waiter_id = 0, waiter_name = NULL WHERE id = ?").run(tableId);
         });
 
@@ -175,6 +169,8 @@ module.exports = {
                 });
             } catch (err) {
                 log.error("Kassa printeri xatosi:", err);
+                // YANGI: Xatoni frontendga yuborish
+                notify('printer-error', `Kassa printeri: ${err.message}`);
             }
         }, 100);
         return res;

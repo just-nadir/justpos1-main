@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ShieldAlert } from 'lucide-react';
-import { useGlobal } from '../context/GlobalContext'; // YANGI
+import { ShieldAlert, CheckCircle, AlertTriangle, X } from 'lucide-react'; // Ikonkalar qo'shildi
+import { useGlobal } from '../context/GlobalContext';
+import { useIpcListener } from '../hooks/useIpcListener'; // Hookni import qilamiz
 import Sidebar from './Sidebar';
 import TablesGrid from './TablesGrid';
 import OrderSummary from './OrderSummary';
@@ -14,28 +15,34 @@ import Marketing from './Marketing';
 import PinLogin from './PinLogin';
 
 const DesktopLayout = () => {
-  const { user, logout, loading } = useGlobal(); // Contextdan ma'lumot olish
+  const { user, logout, loading, toast, showToast } = useGlobal(); // showToast oldik
   const [activePage, setActivePage] = useState('pos');
   const [selectedTable, setSelectedTable] = useState(null);
 
-  // Yuklanish holati (Context ishga tushgunicha)
+  // YANGI: Printer xatolarini global eshitish
+  useIpcListener('db-change', (event, data) => {
+      // Agar backenddan 'printer-error' kelsa
+      if (data.type === 'printer-error') {
+          showToast('error', `Printer Xatosi: ${data.id}`); // data.id ichida xabar matni bo'ladi
+          // Ovozli signal (beep) ham qo'shish mumkin
+      }
+  });
+
   if (loading) {
-    return <div className="flex h-screen items-center justify-center text-gray-500 font-bold">Yuklanmoqda...</div>;
+    return <div className="flex h-screen items-center justify-center text-gray-500 font-bold bg-gray-100">Tizim yuklanmoqda...</div>;
   }
 
-  // Agar user bo'lmasa, Login ekranini ko'rsatish
   if (!user) {
-    return <PinLogin />; // Prop kerak emas, PinLogin o'zi context bilan ishlaydi
+    return <PinLogin />;
   }
 
   const handleLogout = () => {
-    logout(); // Contextdagi logout funksiyasini chaqiramiz
+    logout();
     setSelectedTable(null);
     setActivePage('pos');
   };
 
   const renderContent = () => {
-    // XAVFSIZLIK: Kassir uchun taqiqlangan sahifalar
     if (user.role === 'cashier') {
         const allowed = ['pos', 'customers', 'debtors'];
         if (!allowed.includes(activePage)) {
@@ -69,7 +76,16 @@ const DesktopLayout = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
+    <div className="flex h-screen bg-gray-100 overflow-hidden font-sans relative">
+      
+      {/* YANGI: Global Toast UI */}
+      {toast && (
+        <div className={`absolute top-6 right-6 z-[9999] px-6 py-4 rounded-2xl shadow-2xl text-white font-bold flex items-center gap-3 animate-in slide-in-from-top duration-300 ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+           {toast.type === 'success' ? <CheckCircle size={24}/> : <AlertTriangle size={24}/>} 
+           <span className="text-lg">{toast.msg}</span>
+        </div>
+      )}
+
       <Sidebar 
         activePage={activePage} 
         onNavigate={setActivePage} 
