@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, UtensilsCrossed, Settings, LogOut, Square, Users, FileText, PieChart } from 'lucide-react';
+import { LayoutGrid, UtensilsCrossed, Settings, LogOut, Square, Users, FileText, PieChart, MessageSquare } from 'lucide-react'; // MessageSquare import qilindi
 
 const Sidebar = ({ activePage, onNavigate, onLogout, user }) => {
   const menuItems = [
@@ -9,6 +9,7 @@ const Sidebar = ({ activePage, onNavigate, onLogout, user }) => {
     { id: 'customers', icon: <Users size={24} />, label: "Mijozlar" },
     { id: 'debtors', icon: <FileText size={24} />, label: "Qarzdorlar" },
     { id: 'reports', icon: <PieChart size={24} />, label: "Xisobotlar" },
+    { id: 'marketing', icon: <MessageSquare size={24} />, label: "SMS" }, // YANGI
     { id: 'settings', icon: <Settings size={24} />, label: "Sozlamalar" },
   ];
 
@@ -22,7 +23,7 @@ const Sidebar = ({ activePage, onNavigate, onLogout, user }) => {
         return ['pos', 'customers', 'debtors'].includes(item.id);
     }
 
-    return false; // Boshqalarga hech narsa yo'q
+    return false; 
   });
 
   return (

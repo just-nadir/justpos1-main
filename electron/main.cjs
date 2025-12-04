@@ -1,9 +1,9 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const log = require('electron-log');
-// DATABASE DAN 'onChange' NI IMPORT QILISH
 const { initDB, onChange } = require('./database.cjs'); 
 const startServer = require('./server.cjs');
+const initScheduler = require('./services/scheduler.cjs');
 
 // --- LOGGER SOZLAMALARI ---
 log.transports.file.level = 'info';
@@ -18,23 +18,23 @@ const orderController = require('./controllers/orderController.cjs');
 const userController = require('./controllers/userController.cjs');
 const settingsController = require('./controllers/settingsController.cjs');
 const staffController = require('./controllers/staffController.cjs');
+const smsController = require('./controllers/smsController.cjs');
 
 process.on('uncaughtException', (error) => {
   log.error('KRITIK XATOLIK (Main):', error);
 });
-
 process.on('unhandledRejection', (reason) => {
   log.error('Ushlanmagan Promise:', reason);
 });
 
-// GPU tezlashtirishni o'chirish (ba'zi eski kompyuterlarda muammo bo'lmasligi uchun)
 app.disableHardwareAcceleration();
 
 function createWindow() {
   try {
     initDB();
     startServer();
-    log.info("Dastur ishga tushdi. Baza va Server yondi.");
+    initScheduler();
+    log.info("Dastur ishga tushdi. Baza, Server va Scheduler yondi.");
   } catch (err) {
     log.error("Boshlang'ich yuklashda xato:", err);
   }
@@ -44,25 +44,21 @@ function createWindow() {
     height: 800,
     backgroundColor: '#f3f4f6',
     webPreferences: {
-      nodeIntegration: false, // XAVFSIZLIK: Node.js funksiyalarini rendererda o'chirish
-      contextIsolation: true, // XAVFSIZLIK: Context isolationni yoqish
-      sandbox: false, // SQLite kabi native modullar ishlashi uchun false qoldiramiz (lekin nodeIntegration false)
-      preload: path.join(__dirname, 'preload.cjs') // Preload orqali bog'lanish
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+      preload: path.join(__dirname, 'preload.cjs')
     },
   });
 
-  // --- REAL-TIME UPDATE ---
-  // Bazada o'zgarish bo'lganda (notify), darhol oynaga xabar yuboramiz
   onChange((type, id) => {
     if (!win.isDestroyed()) {
       win.webContents.send('db-change', { type, id });
     }
   });
-  // ----------------------------------------------
 
-  // Development rejimida localhost, Production da build fayl
   win.loadURL('http://localhost:5173');
-  
+
   win.webContents.on('render-process-gone', (event, details) => {
     log.error('Renderer jarayoni quladi:', details.reason);
     if (details.reason === 'crashed') {
@@ -90,6 +86,7 @@ ipcMain.handle('close-table', (e, id) => tableController.closeTable(id));
 ipcMain.handle('get-customers', () => userController.getCustomers());
 ipcMain.handle('add-customer', (e, c) => userController.addCustomer(c));
 ipcMain.handle('delete-customer', (e, id) => userController.deleteCustomer(id));
+
 ipcMain.handle('get-debtors', () => userController.getDebtors());
 ipcMain.handle('get-debt-history', (e, id) => userController.getDebtHistory(id));
 ipcMain.handle('pay-debt', (e, data) => userController.payDebt(data.customerId, data.amount, data.comment));
@@ -107,20 +104,16 @@ ipcMain.handle('delete-product', (e, id) => productController.deleteProduct(id))
 ipcMain.handle('get-settings', () => settingsController.getSettings());
 ipcMain.handle('save-settings', (e, data) => settingsController.saveSettings(data));
 ipcMain.handle('get-kitchens', () => settingsController.getKitchens());
-
 ipcMain.handle('save-kitchen', (e, data) => settingsController.saveKitchen(data));
 ipcMain.handle('delete-kitchen', (e, id) => settingsController.deleteKitchen(id));
 
-// YANGI: Tizimdagi printerlarni olish
 ipcMain.handle('get-system-printers', async () => {
     const wins = BrowserWindow.getAllWindows();
     if (wins.length === 0) return [];
-    // Asosiy oynadan printerlar ro'yxatini so'raymiz
     const printers = await wins[0].webContents.getPrintersAsync();
     return printers;
 });
 
-// YANGI: Backup DB
 ipcMain.handle('backup-db', () => settingsController.backupDB());
 
 ipcMain.handle('get-users', () => staffController.getUsers());
@@ -138,7 +131,14 @@ ipcMain.handle('get-sales', (e, range) => {
   return orderController.getSales();
 });
 
-// App Lifecycle
+// --- SMS HANDLERS ---
+ipcMain.handle('sms-get-settings', () => smsController.getSettings()); // Email olish
+ipcMain.handle('sms-save-settings', (e, data) => smsController.saveSettings(data));
+ipcMain.handle('sms-get-templates', () => smsController.getTemplates());
+ipcMain.handle('sms-update-template', (e, data) => smsController.updateTemplate(data.type, data.template));
+ipcMain.handle('sms-send-broadcast', (e, message) => smsController.sendBroadcast(message));
+ipcMain.handle('sms-get-history', () => smsController.getHistory());
+
 app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

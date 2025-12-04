@@ -9,6 +9,7 @@ import CustomersManagement from './CustomersManagement';
 import DebtorsManagement from './DebtorsManagement';
 import Reports from './Reports';
 import Settings from './Settings';
+import Marketing from './Marketing'; // YANGI
 import PinLogin from './PinLogin';
 
 const DesktopLayout = () => {
@@ -54,6 +55,7 @@ const DesktopLayout = () => {
       case 'customers': return <CustomersManagement />;
       case 'debtors': return <DebtorsManagement />;
       case 'reports': return <Reports />;
+      case 'marketing': return <Marketing />; // YANGI
       case 'settings': return <Settings />;
       default: return <div>Sahifa topilmadi</div>;
     }
