@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, Users, User, Wallet, X, Printer } from 'lucide-react';
+import { CreditCard, Users, User, Wallet, X, Printer, Hash } from 'lucide-react';
 import PaymentModal from './PaymentModal';
 import CustomerModal from './CustomerModal';
 
@@ -11,14 +11,11 @@ const OrderSummary = ({ table, onDeselect }) => {
   const [orderItems, setOrderItems] = useState([]);
   const [loading, setLoading] = useState(false);
   
-  // Sozlamalar state
   const [settings, setSettings] = useState({});
 
-  // Sozlamalarni yuklash
   useEffect(() => {
     const loadSettings = async () => {
       if (!window.electron) return;
-
       try {
         const { ipcRenderer } = window.electron;
         const data = await ipcRenderer.invoke('get-settings');
@@ -39,7 +36,6 @@ const OrderSummary = ({ table, onDeselect }) => {
 
   const loadOrderItems = async (tableId) => {
     if (!window.electron) return;
-    
     setLoading(true);
     try {
       const { ipcRenderer } = window.electron;
@@ -56,23 +52,21 @@ const OrderSummary = ({ table, onDeselect }) => {
     if (!table || !window.electron) return;
     try {
       const { ipcRenderer } = window.electron;
+      // Chek chiqarish uchun hozirgi holatdagi checkout funksiyasiga o'xshash alohida 'print-check' handler ham qo'shish mumkin
+      // Lekin hozircha statusni o'zgartirish bilan cheklanamiz
       await ipcRenderer.invoke('update-table-status', { id: table.id, status: 'payment' });
     } catch (error) { console.error(error); }
   };
 
-  // --- HISOBLASH ---
   const subtotal = orderItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
   const guestsCount = table?.guests || 0;
 
-  // Xizmat haqini dinamik hisoblash
   let service = 0;
   const svcValue = Number(settings.serviceChargeValue) || 0;
   
   if (settings.serviceChargeType === 'percent') {
-      // Agar foiz bo'lsa
       service = (subtotal * svcValue) / 100;
   } else {
-      // Agar kishi boshiga bo'lsa (fixed)
       service = guestsCount * svcValue;
   }
 
@@ -88,13 +82,11 @@ const OrderSummary = ({ table, onDeselect }) => {
   }
   const finalTotal = preTotal - discountAmount;
 
-  // --- TO'LOV QILISH ---
   const handlePaymentSuccess = async (method) => {
     if (!table || !window.electron) return;
     try {
       const { ipcRenderer } = window.electron;
       
-      // Checkout uchun ma'lumotlarni yig'amiz
       const checkoutData = {
           tableId: table.id,
           total: finalTotal,
@@ -105,7 +97,6 @@ const OrderSummary = ({ table, onDeselect }) => {
           items: orderItems
       };
 
-      // Backenddagi 'checkout' funksiyasini chaqiramiz
       await ipcRenderer.invoke('checkout', checkoutData);
       
       setIsPaymentModalOpen(false);
@@ -116,26 +107,16 @@ const OrderSummary = ({ table, onDeselect }) => {
     }
   };
   
-  // INPUT FIX: Qiymatni to'g'ri boshqarish
   const handleBonusChange = (e) => {
     const valueStr = e.target.value;
-    
-    // Bo'sh bo'lsa 0
     if (valueStr === '') {
         setBonusToUse(0);
         return;
     }
-
-    // Manfiy sonlarni bloklash
     let val = Number(valueStr);
     if (val < 0) return;
-
-    // Maksimal balansdan oshmasligi kerak
     if (val > selectedCustomer.balance) val = selectedCustomer.balance;
-    
-    // Jami summadan oshmasligi kerak
     if (val > preTotal) val = preTotal;
-
     setBonusToUse(val);
   };
 
@@ -156,14 +137,25 @@ const OrderSummary = ({ table, onDeselect }) => {
         <div className={`p-6 border-b border-gray-100 ${table.status === 'payment' ? 'bg-yellow-50' : 'bg-gray-50'}`}>
           <div className="flex justify-between items-center mb-1">
             <h2 className="text-2xl font-bold text-gray-800">{table.name}</h2>
-            <span className={`px-3 py-1 rounded-full text-sm font-bold
+            
+            {/* --- YANGI: CHEK RAQAMI --- */}
+            {table.current_check_number > 0 && (
+                <div className="flex items-center gap-1 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-200">
+                    <Hash size={14} className="text-gray-500" />
+                    <span className="font-black text-lg text-gray-800">{table.current_check_number}</span>
+                </div>
+            )}
+            {/* ------------------------- */}
+          </div>
+          
+          <div className="flex justify-between items-center mt-2">
+             <div className="flex items-center gap-2 text-gray-500 text-sm">
+                <Users size={14} /> <span>{guestsCount} mehmon</span>
+             </div>
+             <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase
               ${table.status === 'occupied' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
               {table.status === 'occupied' ? 'Band' : 'To\'lov'}
             </span>
-          </div>
-          <div className="flex items-center gap-2 text-gray-500 text-sm mt-2">
-            <Users size={14} /> <span>{guestsCount} mehmon</span>
-            <span className="text-gray-300">|</span> <span>Ofitsiant: Jasur A.</span>
           </div>
         </div>
 
@@ -223,7 +215,6 @@ const OrderSummary = ({ table, onDeselect }) => {
         <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-2">
           <div className="flex justify-between text-gray-600"><span>Stol hisobi:</span><span>{subtotal.toLocaleString()}</span></div>
           
-          {/* Service Charge dinamik ko'rsatish */}
           <div className="flex justify-between text-gray-600">
              <span>Xizmat ({settings.serviceChargeType === 'percent' ? `${settings.serviceChargeValue}%` : 'Fixed'}):</span>
              <span>{service.toLocaleString()}</span>

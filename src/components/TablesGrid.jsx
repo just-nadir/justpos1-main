@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Clock, Receipt } from 'lucide-react';
+import { Users, Clock, Receipt, Hash } from 'lucide-react';
 
 const TablesGrid = ({ onSelectTable }) => {
   const [tables, setTables] = useState([]);
@@ -9,7 +9,6 @@ const TablesGrid = ({ onSelectTable }) => {
 
   const loadData = async () => {
     try {
-      // YANGI: Xavfsiz ulanish (preload orqali)
       if (window.electron && window.electron.ipcRenderer) {
         const hallsData = await window.electron.ipcRenderer.invoke('get-halls');
         setHalls(hallsData);
@@ -27,20 +26,16 @@ const TablesGrid = ({ onSelectTable }) => {
   useEffect(() => {
     loadData();
     
-    // --- YANGI: Faqat signal kelganda yangilash ---
     let cleanup = () => {};
 
     if (window.electron && window.electron.ipcRenderer) {
-        // 'on' metodi bizning preload.cjs da tozalash funksiyasini qaytaradigan qilib yozilgan
         cleanup = window.electron.ipcRenderer.on('db-change', (event, data) => {
-            // Agar stollar, savdo yoki buyurtma o'zgarsa - yangilaymiz
             if (data.type === 'tables' || data.type === 'sales' || data.type === 'table-items') {
                 loadData();
             }
         });
     }
 
-    // Komponent o'chganda listenerni o'chiramiz
     return () => {
         cleanup();
     };
@@ -123,6 +118,13 @@ const TablesGrid = ({ onSelectTable }) => {
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-bold text-lg text-gray-800">{table.name}</h3>
+                  {/* --- YANGI: CHEK RAQAMI --- */}
+                  {table.current_check_number > 0 && (
+                      <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs font-bold mt-1 border border-gray-200">
+                          <Hash size={12}/> {table.current_check_number}
+                      </span>
+                  )}
+                  {/* ------------------------- */}
                   <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
                     <Clock size={14} /> {table.start_time || '--:--'}
                     <span className="text-gray-300">|</span>

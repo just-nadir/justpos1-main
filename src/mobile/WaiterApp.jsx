@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, Clock, ChevronLeft, ShoppingBag, Trash2, Plus, Minus, CheckCircle, X, LogOut, User, AlertTriangle } from 'lucide-react';
+import { Users, Clock, ChevronLeft, ShoppingBag, Trash2, Plus, Minus, CheckCircle, X, LogOut, User, AlertTriangle, Hash } from 'lucide-react';
 
 // Hooks
 import { useSocketData } from '../hooks/useSocketData';
@@ -16,7 +16,6 @@ const WaiterApp = () => {
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [guestCount, setGuestCount] = useState(2); 
   
-  // Modals & Notifications
   const [showConfirmLogout, setShowConfirmLogout] = useState(false);
   const [showConfirmOrder, setShowConfirmOrder] = useState(false);
   const [toast, setToast] = useState(null); 
@@ -176,7 +175,17 @@ const WaiterApp = () => {
                   table.status === 'payment' ? 'border-yellow-500 bg-yellow-50' : 'border-gray-300'}`}
             >
               <div>
-                 <h3 className="font-bold text-xl text-gray-800">{table.name}</h3>
+                 <div className="flex justify-between items-start">
+                    <h3 className="font-bold text-xl text-gray-800">{table.name}</h3>
+                    {/* --- YANGI: CHEK RAQAMI MOBILDA --- */}
+                    {table.current_check_number > 0 && (
+                        <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs font-black flex items-center gap-0.5">
+                            <Hash size={10}/> {table.current_check_number}
+                        </span>
+                    )}
+                    {/* ---------------------------------- */}
+                 </div>
+                 
                  <span className={`text-xs font-bold uppercase mt-1 inline-block px-2 py-0.5 rounded
                    ${table.status === 'occupied' ? 'bg-blue-100 text-blue-700' : 
                      table.status === 'payment' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -214,7 +223,15 @@ const WaiterApp = () => {
             <ChevronLeft size={24} />
         </button>
         <div className="flex-1">
-          <h2 className="font-bold text-lg leading-none">{activeTable?.name}</h2>
+          <div className="flex items-center gap-2">
+              <h2 className="font-bold text-lg leading-none">{activeTable?.name}</h2>
+              {/* --- YANGI: MENYUDA HAM CHEK RAQAMINI KO'RSATISH --- */}
+              {activeTable?.current_check_number > 0 && (
+                  <span className="text-xs font-black text-gray-400 bg-gray-100 px-1 rounded flex items-center">
+                      #{activeTable.current_check_number}
+                  </span>
+              )}
+          </div>
           <button onClick={updateGuestsInMenu} className="text-xs text-blue-600 flex items-center gap-1 font-bold mt-0.5 active:opacity-50">
              <Users size={12}/> {activeTable?.guests} mehmon
           </button>
