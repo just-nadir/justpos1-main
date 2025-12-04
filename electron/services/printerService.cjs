@@ -184,7 +184,7 @@ module.exports = {
             <div class="line"></div>
 
             <div class="flex">
-                <span>Oraliq summa:</span>
+                <span>Jami:</span>
                 <span>${(orderData.subtotal || 0).toLocaleString()}</span>
             </div>
             
