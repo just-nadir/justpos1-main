@@ -22,7 +22,7 @@ function createHtmlTemplate(bodyContent) {
         <style>
             body {
                 font-family: 'Courier New', Courier, monospace;
-                width: 270px; /* 80mm printer uchun standart */
+                width: 270px; /* 80mm printer standarti */
                 margin: 0 auto;
                 padding: 0;
                 font-size: 12px;
@@ -67,7 +67,7 @@ function createHtmlTemplate(bodyContent) {
     `;
 }
 
-// Asosiy chop etish funksiyasi
+// Asosiy chop etish funksiyasi (Yashirin oyna orqali)
 async function printHtml(htmlContent, printerName) {
     const workerWindow = new BrowserWindow({
         show: false,
@@ -119,7 +119,7 @@ async function printHtml(htmlContent, printerName) {
 }
 
 module.exports = {
-    // 1. Kassa Cheki (Yangilangan)
+    // 1. Kassa Cheki
     printOrderReceipt: async (orderData) => {
         const settings = getSettings();
         const printerName = settings.printerReceiptIP;
@@ -129,6 +129,9 @@ module.exports = {
         const phone = settings.phone || "";
         const footerText = settings.receiptFooter || "Xaridingiz uchun rahmat!";
         const checkNum = orderData.checkNumber || 0;
+        
+        // YANGI: Ofitsiant ismi
+        const waiterName = orderData.waiterName || "Kassir";
 
         const itemsHtml = orderData.items.map(item => `
             <tr>
@@ -161,6 +164,10 @@ module.exports = {
             <div class="flex">
                 <span>Stol:</span>
                 <span class="bold">${orderData.tableName}</span>
+            </div>
+            <div class="flex">
+                <span>Ofitsiant:</span>
+                <span class="bold uppercase">${waiterName}</span>
             </div>
             <div class="flex">
                 <span>To'lov:</span>
@@ -214,7 +221,7 @@ module.exports = {
     },
 
     // 2. Oshxona Cheki (Runner)
-    printKitchenTicket: async (items, tableName, checkNumber) => {
+    printKitchenTicket: async (items, tableName, checkNumber, waiterName) => {
         const kitchens = db.prepare('SELECT * FROM kitchens').all();
         
         const groupedItems = {};
@@ -251,6 +258,10 @@ module.exports = {
                     <div class="flex bold" style="font-size: 14px;">
                         <span>Stol:</span>
                         <span style="font-size: 18px;">${tableName}</span>
+                    </div>
+                    <div class="flex">
+                        <span>Ofitsiant:</span>
+                        <span class="uppercase">${waiterName || "-"}</span>
                     </div>
                     <div class="flex">
                         <span>Vaqt:</span>
