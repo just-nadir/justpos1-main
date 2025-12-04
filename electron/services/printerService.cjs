@@ -12,7 +12,7 @@ function getSettings() {
     }
 }
 
-// Yordamchi: HTML shablon yaratish (YANGILANGAN DIZAYN)
+// Yordamchi: HTML shablon yaratish
 function createHtmlTemplate(bodyContent) {
     return `
     <!DOCTYPE html>
@@ -119,18 +119,17 @@ async function printHtml(htmlContent, printerName) {
 }
 
 module.exports = {
-    // 1. Kassa Cheki
+    // 1. Kassa Cheki (Yangilangan)
     printOrderReceipt: async (orderData) => {
         const settings = getSettings();
         const printerName = settings.printerReceiptIP;
 
-        // Sozlamalardan ma'lumot olish
         const restaurantName = settings.restaurantName || "RESTORAN";
         const address = settings.address || "";
         const phone = settings.phone || "";
         const footerText = settings.receiptFooter || "Xaridingiz uchun rahmat!";
+        const checkNum = orderData.checkNumber || 0;
 
-        // Mahsulotlar ro'yxati
         const itemsHtml = orderData.items.map(item => `
             <tr>
                 <td class="col-name">${item.product_name}</td>
@@ -139,13 +138,7 @@ module.exports = {
             </tr>
         `).join('');
 
-        // To'lov turini chiroyli chiqarish
-        const paymentMap = {
-            'cash': 'Naqd',
-            'card': 'Karta',
-            'click': 'Click/Payme',
-            'debt': 'Nasiya'
-        };
+        const paymentMap = { 'cash': 'Naqd', 'card': 'Karta', 'click': 'Click/Payme', 'debt': 'Nasiya' };
         const paymentMethod = paymentMap[orderData.paymentMethod] || orderData.paymentMethod || 'Naqd';
 
         const content = `
@@ -157,6 +150,10 @@ module.exports = {
             
             <div class="double-line"></div>
             
+            <div class="flex">
+                <span>Chek:</span>
+                <span class="bold"># ${checkNum}</span>
+            </div>
             <div class="flex">
                 <span>Sana:</span>
                 <span>${new Date().toLocaleString('uz-UZ')}</span>
@@ -184,7 +181,7 @@ module.exports = {
             <div class="line"></div>
 
             <div class="flex">
-                <span>Jami summa:</span>
+                <span>Oraliq summa:</span>
                 <span>${(orderData.subtotal || 0).toLocaleString()}</span>
             </div>
             
@@ -217,7 +214,7 @@ module.exports = {
     },
 
     // 2. Oshxona Cheki (Runner)
-    printKitchenTicket: async (items, tableName) => {
+    printKitchenTicket: async (items, tableName, checkNumber) => {
         const kitchens = db.prepare('SELECT * FROM kitchens').all();
         
         const groupedItems = {};
@@ -242,14 +239,18 @@ module.exports = {
 
                 const content = `
                     <div class="text-center">
-                        <div class="header-title" style="border: 2px solid #000; padding: 5px; display: inline-block;">${kitchen.name.toUpperCase()}</div>
+                        <div class="header-title" style="background: #000; color: #fff; padding: 5px; display: block;">${kitchen.name.toUpperCase()}</div>
                     </div>
                     
                     <div class="mb-1"></div>
 
-                    <div class="flex bold" style="font-size: 16px;">
+                    <div class="flex bold" style="font-size: 14px;">
+                        <span>Chek:</span>
+                        <span style="font-size: 18px;"># ${checkNumber || '?'}</span>
+                    </div>
+                    <div class="flex bold" style="font-size: 14px;">
                         <span>Stol:</span>
-                        <span>${tableName}</span>
+                        <span style="font-size: 18px;">${tableName}</span>
                     </div>
                     <div class="flex">
                         <span>Vaqt:</span>
