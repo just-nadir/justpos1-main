@@ -90,7 +90,7 @@ const TablesGrid = ({ onSelectTable }) => {
             <div 
               key={table.id} 
               onClick={() => onSelectTable(table)}
-              // TUZATISH: h-auto va min-h berildi, flex layout to'g'irlandi
+              // DIZAYN TUZATILDI: h-auto va min-h berildi, flex layout to'g'irlandi
               className={`p-4 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between h-auto min-h-[170px] ${getStatusColor(table.status)}`}
             >
               <div className="flex flex-col gap-2">

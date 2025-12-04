@@ -52,13 +52,13 @@ module.exports = {
     }
   },
 
-  // 2. MOBIL OFITSIANT (TUZATILDI)
+  // 2. MOBIL OFITSIANT (YANGILANDI)
   addBulkItems: (tableId, items, waiterId) => {
     try {
         let checkNumber = 0;
         let waiterName = "Noma'lum";
 
-        // --- TUZATISH: Ofitsiant ismini aniq olish ---
+        // 1-QADAM: Ofitsiant ismini ID orqali aniqlaymiz
         if (waiterId) {
             const user = db.prepare('SELECT name FROM users WHERE id = ?').get(waiterId);
             if (user) {
@@ -67,7 +67,6 @@ module.exports = {
                 console.warn(`Ofitsiant topilmadi ID: ${waiterId}`);
             }
         }
-        // ---------------------------------------------
 
         const addBulkTransaction = db.transaction((itemsList) => {
            checkNumber = getOrCreateCheckNumber(tableId);
@@ -80,18 +79,22 @@ module.exports = {
                additionalTotal += (item.price * item.qty);
            }
            
-           const currentTable = db.prepare('SELECT total_amount, waiter_id, status FROM tables WHERE id = ?').get(tableId);
+           const currentTable = db.prepare('SELECT total_amount, waiter_id, waiter_name, status FROM tables WHERE id = ?').get(tableId);
            const newTotal = (currentTable ? currentTable.total_amount : 0) + additionalTotal;
-           
            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-           // --- TUZATISH: Stol egasini yangilash mantig'i ---
-           // Agar stol bo'sh bo'lsa YOKI avvalgi egasi bo'lmasa -> yangi ofitsiantni yozamiz
-           if (currentTable.status === 'free' || !currentTable.waiter_id || currentTable.waiter_id === 0) {
-               db.prepare(`UPDATE tables SET status = 'occupied', total_amount = ?, start_time = ?, waiter_id = ?, waiter_name = ? WHERE id = ?`)
+           // --- LOGIKA: Stol egasini yangilash ---
+           // Agar stol bo'sh bo'lsa, yoki egasi yo'q bo'lsa, yoki "Kassir/Noma'lum" bo'lsa, 
+           // yangi buyurtma bergan ofitsiant nomiga o'tkazib yuboramiz.
+           const isOrphan = !currentTable.waiter_id || currentTable.waiter_id === 0;
+           const isUnknown = currentTable.waiter_name === "Noma'lum" || currentTable.waiter_name === "Kassir";
+           const isFree = currentTable.status === 'free';
+
+           if (isFree || isOrphan || isUnknown) {
+               db.prepare(`UPDATE tables SET status = 'occupied', total_amount = ?, start_time = COALESCE(start_time, ?), waiter_id = ?, waiter_name = ? WHERE id = ?`)
                  .run(newTotal, time, waiterId, waiterName, tableId);
            } else {
-               // Agar stol band bo'lsa, faqat summani yangilaymiz (eski ofitsiant qoladi)
+               // Agar stol boshqa ofitsiantda bo'lsa, faqat summani yangilaymiz
                db.prepare(`UPDATE tables SET total_amount = ? WHERE id = ?`)
                  .run(newTotal, tableId);
            }
@@ -104,12 +107,14 @@ module.exports = {
         // Printerga yuborish
         setTimeout(async () => {
             try {
-                // Printerga to'g'ri ism borishini ta'minlash uchun qayta o'qiymiz
+                // Printerga boradigan ismni aniqlash
                 const freshTable = db.prepare('SELECT name, waiter_name FROM tables WHERE id = ?').get(tableId);
-                const finalWaiterName = freshTable ? freshTable.waiter_name : waiterName;
                 const tableName = freshTable ? freshTable.name : "Stol";
+                
+                // Agar 'waiterName' bizda aniq bo'lsa, o'shani chiqaramiz.
+                const nameToPrint = (waiterName && waiterName !== "Noma'lum") ? waiterName : (freshTable.waiter_name || "Kassir");
 
-                await printerService.printKitchenTicket(items, tableName, checkNumber, finalWaiterName);
+                await printerService.printKitchenTicket(items, tableName, checkNumber, nameToPrint);
             } catch (printErr) {
                 log.error("Oshxona printeri xatosi:", printErr);
             }

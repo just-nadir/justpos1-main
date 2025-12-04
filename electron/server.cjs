@@ -10,7 +10,7 @@ const tableController = require('./controllers/tableController.cjs');
 const productController = require('./controllers/productController.cjs');
 const orderController = require('./controllers/orderController.cjs');
 const settingsController = require('./controllers/settingsController.cjs');
-const staffController = require('./controllers/staffController.cjs'); // YANGI
+const staffController = require('./controllers/staffController.cjs');
 
 function startServer() {
   const app = express();
@@ -20,7 +20,6 @@ function startServer() {
   app.use(express.json());
 
   const httpServer = http.createServer(app);
-  
   const io = new Server(httpServer, {
     cors: { origin: "*", methods: ["GET", "POST"] }
   });
@@ -82,17 +81,24 @@ function startServer() {
     }
   });
 
+  // --- TUZATILGAN JOY ---
   app.post('/api/orders/bulk-add', (req, res) => {
     try {
-      const { tableId, items } = req.body;
+      // waiterId ni qabul qilib olamiz
+      const { tableId, items, waiterId } = req.body; 
+      
       if (!tableId || !items || !Array.isArray(items)) throw new Error("Noto'g'ri ma'lumot");
-      orderController.addBulkItems(tableId, items);
+      
+      // Controllerga waiterId ni ham yuboramiz
+      orderController.addBulkItems(tableId, items, waiterId);
+      
       res.json({ success: true });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: e.message });
     }
   });
+  // ---------------------
 
   app.get('/api/settings', (req, res) => {
     try { res.json(settingsController.getSettings()); } catch(e) { res.status(500).json({ error: e.message }); }

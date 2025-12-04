@@ -82,7 +82,6 @@ async function printHtml(htmlContent, printerName) {
     try {
         const htmlBase64 = Buffer.from(htmlContent).toString('base64');
         await workerWindow.loadURL(`data:text/html;base64,${htmlBase64}`);
-
         await new Promise(resolve => setTimeout(resolve, 500));
 
         const options = {
@@ -107,7 +106,6 @@ async function printHtml(htmlContent, printerName) {
                 }
             });
         });
-
         console.log("✅ Muvaffaqiyatli chop etildi!");
 
     } catch (error) {
@@ -129,8 +127,6 @@ module.exports = {
         const phone = settings.phone || "";
         const footerText = settings.receiptFooter || "Xaridingiz uchun rahmat!";
         const checkNum = orderData.checkNumber || 0;
-        
-        // YANGI: Ofitsiant ismi
         const waiterName = orderData.waiterName || "Kassir";
 
         const itemsHtml = orderData.items.map(item => `
@@ -165,9 +161,9 @@ module.exports = {
                 <span>Stol:</span>
                 <span class="bold">${orderData.tableName}</span>
             </div>
-            <div class="flex">
+            <div class="flex" style="margin-top: 2px;">
                 <span>Ofitsiant:</span>
-                <span class="bold uppercase">${waiterName}</span>
+                <span class="bold uppercase" style="font-size: 14px;">${waiterName}</span>
             </div>
             <div class="flex">
                 <span>To'lov:</span>
@@ -259,9 +255,9 @@ module.exports = {
                         <span>Stol:</span>
                         <span style="font-size: 18px;">${tableName}</span>
                     </div>
-                    <div class="flex">
-                        <span>Ofitsiant:</span>
-                        <span class="uppercase">${waiterName || "-"}</span>
+                    <div class="flex" style="border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px;">
+                        <span style="font-weight: bold;">Ofitsiant:</span>
+                        <span class="uppercase bold" style="font-size: 16px;">${waiterName || "-"}</span>
                     </div>
                     <div class="flex">
                         <span>Vaqt:</span>
