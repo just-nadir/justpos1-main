@@ -1,30 +1,38 @@
-import React, { useState } from 'react';
-import { ShieldAlert, CheckCircle, AlertTriangle, X } from 'lucide-react'; // Ikonkalar qo'shildi
+import React, { useState, Suspense, lazy } from 'react';
+import { ShieldAlert, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
-import { useIpcListener } from '../hooks/useIpcListener'; // Hookni import qilamiz
+import { useIpcListener } from '../hooks/useIpcListener';
 import Sidebar from './Sidebar';
 import TablesGrid from './TablesGrid';
 import OrderSummary from './OrderSummary';
-import MenuManagement from './MenuManagement';
-import TablesManagement from './TablesManagement';
-import CustomersManagement from './CustomersManagement';
-import DebtorsManagement from './DebtorsManagement';
-import Reports from './Reports';
-import Settings from './Settings';
-import Marketing from './Marketing'; 
 import PinLogin from './PinLogin';
 
+// --- OPTIMIZATSIYA: Dangasa Yuklash (Lazy Loading) ---
+// Bu komponentlar faqat kerak bo'lganda yuklanadi
+const MenuManagement = lazy(() => import('./MenuManagement'));
+const TablesManagement = lazy(() => import('./TablesManagement'));
+const CustomersManagement = lazy(() => import('./CustomersManagement'));
+const DebtorsManagement = lazy(() => import('./DebtorsManagement'));
+const Reports = lazy(() => import('./Reports'));
+const Settings = lazy(() => import('./Settings'));
+const Marketing = lazy(() => import('./Marketing'));
+
+// Yuklanayotganda ko'rsatiladigan chiroyli spinner
+const PageLoader = () => (
+  <div className="flex items-center justify-center h-full w-full bg-gray-50">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+);
+
 const DesktopLayout = () => {
-  const { user, logout, loading, toast, showToast } = useGlobal(); // showToast oldik
+  const { user, logout, loading, toast, showToast } = useGlobal();
   const [activePage, setActivePage] = useState('pos');
   const [selectedTable, setSelectedTable] = useState(null);
 
-  // YANGI: Printer xatolarini global eshitish
+  // Printer xatolarini global eshitish
   useIpcListener('db-change', (event, data) => {
-      // Agar backenddan 'printer-error' kelsa
       if (data.type === 'printer-error') {
-          showToast('error', `Printer Xatosi: ${data.id}`); // data.id ichida xabar matni bo'ladi
-          // Ovozli signal (beep) ham qo'shish mumkin
+          showToast('error', `Printer Xatosi: ${data.id}`); 
       }
   });
 
@@ -43,6 +51,7 @@ const DesktopLayout = () => {
   };
 
   const renderContent = () => {
+    // XAVFSIZLIK: Kassir cheklovi
     if (user.role === 'cashier') {
         const allowed = ['pos', 'customers', 'debtors'];
         if (!allowed.includes(activePage)) {
@@ -56,29 +65,36 @@ const DesktopLayout = () => {
         }
     }
 
-    switch (activePage) {
-      case 'pos':
-        return (
-          <>
-            <TablesGrid onSelectTable={setSelectedTable} />
-            <OrderSummary table={selectedTable} onDeselect={() => setSelectedTable(null)} />
-          </>
-        );
-      case 'menu': return <MenuManagement />;
-      case 'tables': return <TablesManagement />;
-      case 'customers': return <CustomersManagement />;
-      case 'debtors': return <DebtorsManagement />;
-      case 'reports': return <Reports />;
-      case 'marketing': return <Marketing />;
-      case 'settings': return <Settings />;
-      default: return <div>Sahifa topilmadi</div>;
-    }
+    // Suspense orqali yuklanish holatini boshqaramiz
+    return (
+      <Suspense fallback={<PageLoader />}>
+        {(() => {
+          switch (activePage) {
+            case 'pos':
+              return (
+                <>
+                  <TablesGrid onSelectTable={setSelectedTable} />
+                  <OrderSummary table={selectedTable} onDeselect={() => setSelectedTable(null)} />
+                </>
+              );
+            case 'menu': return <MenuManagement />;
+            case 'tables': return <TablesManagement />;
+            case 'customers': return <CustomersManagement />;
+            case 'debtors': return <DebtorsManagement />;
+            case 'reports': return <Reports />;
+            case 'marketing': return <Marketing />;
+            case 'settings': return <Settings />;
+            default: return <div>Sahifa topilmadi</div>;
+          }
+        })()}
+      </Suspense>
+    );
   };
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans relative">
       
-      {/* YANGI: Global Toast UI */}
+      {/* Global Toast */}
       {toast && (
         <div className={`absolute top-6 right-6 z-[9999] px-6 py-4 rounded-2xl shadow-2xl text-white font-bold flex items-center gap-3 animate-in slide-in-from-top duration-300 ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
            {toast.type === 'success' ? <CheckCircle size={24}/> : <AlertTriangle size={24}/>} 
@@ -92,6 +108,8 @@ const DesktopLayout = () => {
         onLogout={handleLogout} 
         user={user} 
       />
+      
+      {/* Layout o'zgarishi: POS bo'lsa grid, boshqa bo'lsa to'liq ekran */}
       {activePage === 'pos' ? renderContent() : <div className="flex-1 flex overflow-hidden">{renderContent()}</div>}
     </div>
   );
