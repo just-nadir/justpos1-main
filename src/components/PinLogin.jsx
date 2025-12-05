@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Delete, Lock } from 'lucide-react';
-import { useGlobal } from '../context/GlobalContext'; // YANGI
 
-const PinLogin = () => {
-  const { login } = useGlobal(); // Contextdan olish
+// DIQQAT: ({ onLogin }) qismi borligiga ishonch hosil qiling!
+const PinLogin = ({ onLogin }) => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,21 +25,32 @@ const PinLogin = () => {
 
     setLoading(true);
     try {
+      // 1. Electron borligini tekshiramiz
       if (window.electron) {
-        const { ipcRenderer } = window.electron;
-        const user = await ipcRenderer.invoke('login', pin);
+        const user = await window.electron.ipcRenderer.invoke('login', pin);
         
-        // Ofitsiantlarni bloklash (Desktopda faqat Admin/Kassir)
+        // Ofitsiantlarni bloklash
         if (user.role === 'waiter') {
             setError("Ofitsiantlar mobil ilovadan foydalanishi kerak!");
             setPin('');
             return;
         }
 
-        login(user); // Global Context orqali login qilish
+        // 2. onLogin funksiyasini chaqiramiz
+        if (typeof onLogin === 'function') {
+            onLogin(user); 
+        } else {
+            console.error("Xatolik: onLogin funksiyasi topilmadi. DesktopLayout ni tekshiring.");
+            setError("Tizim xatoligi: onLogin yo'q");
+        }
+
+      } else {
+        setError("Ilova Electron muhitida emas!");
       }
     } catch (err) {
-      setError("PIN kod noto'g'ri!");
+      console.error("Login Error:", err);
+      // Agar backenddan "PIN kod noto'g'ri" degan xato kelsa:
+      setError(err.message.includes("PIN") ? "PIN kod noto'g'ri!" : "Tizim xatoligi");
       setPin('');
     } finally {
       setLoading(false);

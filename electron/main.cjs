@@ -1,11 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const log = require('electron-log');
-// DATABASE
 const { initDB, onChange } = require('./database.cjs'); 
 const startServer = require('./server.cjs');
-// SCHEDULER (YANGI)
-const { startScheduler } = require('./services/smsScheduler.cjs');
 
 // --- LOGGER SOZLAMALARI ---
 log.transports.file.level = 'info';
@@ -34,8 +31,7 @@ function createWindow() {
   try {
     initDB();
     startServer();
-    startScheduler(); // <-- SCHEDULER ISHGA TUSHDI
-    log.info("Dastur ishga tushdi. Baza, Server va Scheduler yondi.");
+    log.info("Dastur ishga tushdi. Baza va Server yondi.");
   } catch (err) {
     log.error("Boshlang'ich yuklashda xato:", err);
   }
@@ -45,9 +41,12 @@ function createWindow() {
     height: 800,
     backgroundColor: '#f3f4f6',
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false, // Eslatma: Keyinchalik xavfsizlik uchun buni true qilish kerak
+      // --- MUHIM O'ZGARISH ---
+      nodeIntegration: false, // Xavfsizlik uchun o'chiramiz
+      contextIsolation: true, // Preload ishlashi uchun buni YOQISH KERAK
+      sandbox: false,
       preload: path.join(__dirname, 'preload.cjs') 
+      // -----------------------
     },
   });
 
@@ -77,8 +76,6 @@ function createWindow() {
     }
   });
 }
-
-// --- IPC HANDLERS ---
 
 // Zallar & Stollar
 ipcMain.handle('get-halls', () => tableController.getHalls());
@@ -114,10 +111,11 @@ ipcMain.handle('get-kitchens', () => settingsController.getKitchens());
 ipcMain.handle('save-kitchen', (e, data) => settingsController.saveKitchen(data));
 ipcMain.handle('delete-kitchen', (e, id) => settingsController.deleteKitchen(id));
 
-// --- YANGI QO'SHILGAN HANDLERLAR ---
+// --- YANGI: SMS Handlers (Agar SettingsControllerda qo'shgan bo'lsangiz) ---
 ipcMain.handle('get-sms-templates', () => settingsController.getSmsTemplates());
 ipcMain.handle('save-sms-template', (e, data) => settingsController.saveSmsTemplate(data));
 ipcMain.handle('send-mass-sms', (e, id) => settingsController.sendMassSms(id));
+// ---------------------------------------------------------------------------
 
 ipcMain.handle('get-users', () => staffController.getUsers());
 ipcMain.handle('save-user', (e, user) => staffController.saveUser(user));
