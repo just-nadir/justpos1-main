@@ -21,6 +21,7 @@ const staffController = require('./controllers/staffController.cjs');
 process.on('uncaughtException', (error) => {
   log.error('KRITIK XATOLIK (Main):', error);
 });
+
 process.on('unhandledRejection', (reason) => {
   log.error('Ushlanmagan Promise:', reason);
 });
@@ -41,33 +42,24 @@ function createWindow() {
     height: 800,
     backgroundColor: '#f3f4f6',
     webPreferences: {
-      // --- MUHIM O'ZGARISH ---
-      nodeIntegration: false, // Xavfsizlik uchun o'chiramiz
-      contextIsolation: true, // Preload ishlashi uchun buni YOQISH KERAK
-      sandbox: false,
+      nodeIntegration: true,
+      contextIsolation: true, // <--- MUHIM: Buni 'true' qiling (oldin false edi)
       preload: path.join(__dirname, 'preload.cjs') 
-      // -----------------------
     },
   });
 
-  // REAL-TIME UPDATE
+  // --- REAL-TIME UPDATE ---
   onChange((type, id) => {
     if (!win.isDestroyed()) {
       win.webContents.send('db-change', { type, id });
     }
   });
 
-  // DEV/PROD URL Logic
-  if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else {
-    if (!app.isPackaged) {
-        win.loadURL('http://localhost:5173');
-        console.log("Development rejimida: http://localhost:5173 yuklanmoqda...");
-    } else {
-        win.loadFile(path.join(__dirname, '../dist/index.html'));
-    }
-  }
+  win.loadURL('http://localhost:5173');
+  
+  // --- BUGNI ANIQLASH UCHUN CONSOLE OYNASINI OCHISH ---
+  win.webContents.openDevTools(); 
+  // ----------------------------------------------------
   
   win.webContents.on('render-process-gone', (event, details) => {
     log.error('Renderer jarayoni quladi:', details.reason);
@@ -81,10 +73,12 @@ function createWindow() {
 ipcMain.handle('get-halls', () => tableController.getHalls());
 ipcMain.handle('add-hall', (e, name) => tableController.addHall(name));
 ipcMain.handle('delete-hall', (e, id) => tableController.deleteHall(id));
+
 ipcMain.handle('get-tables', () => tableController.getTables());
 ipcMain.handle('get-tables-by-hall', (e, id) => tableController.getTablesByHall(id));
 ipcMain.handle('add-table', (e, data) => tableController.addTable(data.hallId, data.name));
 ipcMain.handle('delete-table', (e, id) => tableController.deleteTable(id));
+
 ipcMain.handle('update-table-status', (e, data) => tableController.updateTableStatus(data.id, data.status));
 ipcMain.handle('close-table', (e, id) => tableController.closeTable(id));
 
@@ -99,6 +93,7 @@ ipcMain.handle('pay-debt', (e, data) => userController.payDebt(data.customerId, 
 // Menyu & Mahsulotlar
 ipcMain.handle('get-categories', () => productController.getCategories());
 ipcMain.handle('add-category', (e, name) => productController.addCategory(name));
+
 ipcMain.handle('get-products', () => productController.getProducts());
 ipcMain.handle('add-product', (e, p) => productController.addProduct(p));
 ipcMain.handle('toggle-product-status', (e, data) => productController.toggleProductStatus(data.id, data.status));
@@ -108,22 +103,19 @@ ipcMain.handle('delete-product', (e, id) => productController.deleteProduct(id))
 ipcMain.handle('get-settings', () => settingsController.getSettings());
 ipcMain.handle('save-settings', (e, data) => settingsController.saveSettings(data));
 ipcMain.handle('get-kitchens', () => settingsController.getKitchens());
+
 ipcMain.handle('save-kitchen', (e, data) => settingsController.saveKitchen(data));
 ipcMain.handle('delete-kitchen', (e, id) => settingsController.deleteKitchen(id));
 
-// --- YANGI: SMS Handlers (Agar SettingsControllerda qo'shgan bo'lsangiz) ---
-ipcMain.handle('get-sms-templates', () => settingsController.getSmsTemplates());
-ipcMain.handle('save-sms-template', (e, data) => settingsController.saveSmsTemplate(data));
-ipcMain.handle('send-mass-sms', (e, id) => settingsController.sendMassSms(id));
-// ---------------------------------------------------------------------------
-
 ipcMain.handle('get-users', () => staffController.getUsers());
 ipcMain.handle('save-user', (e, user) => staffController.saveUser(user));
+
 ipcMain.handle('delete-user', (e, id) => staffController.deleteUser(id));
 ipcMain.handle('login', (e, pin) => staffController.login(pin));
 
 // Kassa & Xisobot
 ipcMain.handle('get-table-items', (e, id) => orderController.getTableItems(id));
+
 ipcMain.handle('checkout', (e, data) => orderController.checkout(data));
 ipcMain.handle('get-sales', (e, range) => {
   if (range && range.startDate && range.endDate) {
