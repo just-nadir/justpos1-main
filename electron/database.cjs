@@ -4,14 +4,13 @@ const { app } = require('electron');
 const log = require('electron-log');
 const crypto = require('crypto');
 
-// --- MUHIM O'ZGARISH: Baza manzilini to'g'ri aniqlash ---
-// Agar dastur paketlanmagan bo'lsa (Dev mode), loyiha papkasida yaratamiz.
+// --- Baza manzilini aniqlash ---
 const isDev = !app.isPackaged;
 const dbPath = isDev
     ? path.join(__dirname, '../pos.db') 
     : path.join(app.getPath('userData'), 'pos.db');
 
-console.log("📂 BAZA MANZILI:", dbPath); // Terminalda ko'rinadi
+console.log("📂 BAZA MANZILI:", dbPath);
 
 const db = new Database(dbPath, { verbose: null });
 db.pragma('journal_mode = WAL');
@@ -36,9 +35,10 @@ function hashPIN(pin, salt) {
 
 function initDB() {
   try {
-    // 1. Zallar va Stollar
+    // 1. Kategoriyalar va Mahsulotlar (Eng asosiylari)
+    db.prepare(`CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`).run();
     db.prepare(`CREATE TABLE IF NOT EXISTS halls (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`).run();
-
+    
     db.prepare(`
       CREATE TABLE IF NOT EXISTS tables (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,9 +55,6 @@ function initDB() {
       )
     `).run();
 
-    // 2. Kategoriyalar va Mahsulotlar
-    db.prepare(`CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`).run();
-
     db.prepare(`
       CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,11 +63,14 @@ function initDB() {
         price REAL NOT NULL,
         printer TEXT DEFAULT 'kitchen',
         status TEXT DEFAULT 'active',
+        destination TEXT, 
+        is_active INTEGER DEFAULT 1,
+        image TEXT,
         FOREIGN KEY(category_id) REFERENCES categories(id)
       )
     `).run();
 
-    // 3. Buyurtmalar
+    // 2. Buyurtmalar
     db.prepare(`
       CREATE TABLE IF NOT EXISTS order_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,7 +83,7 @@ function initDB() {
       )
     `).run();
 
-    // 4. Savdolar
+    // 3. Savdolar (Sales)
     db.prepare(`
       CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,9 +96,29 @@ function initDB() {
         customer_id INTEGER,
         waiter_name TEXT,
         guest_count INTEGER,
-        items_json TEXT
+        items_json TEXT,
+        debt_due_date TEXT,
+        last_sms_date TEXT
       )
     `).run();
+
+    // --- SALES JADVALI MIGRATSIYASI (Yangi ustunlar qo'shish) ---
+    try {
+      const salesColumns = db.prepare("PRAGMA table_info(sales)").all();
+      const hasDueDate = salesColumns.some(col => col.name === 'debt_due_date');
+      const hasLastSms = salesColumns.some(col => col.name === 'last_sms_date');
+
+      if (!hasDueDate) {
+        db.prepare("ALTER TABLE sales ADD COLUMN debt_due_date TEXT").run();
+        console.log("MIGRATION: 'debt_due_date' ustuni sales jadvaliga qo'shildi.");
+      }
+      if (!hasLastSms) {
+        db.prepare("ALTER TABLE sales ADD COLUMN last_sms_date TEXT").run();
+        console.log("MIGRATION: 'last_sms_date' ustuni sales jadvaliga qo'shildi.");
+      }
+    } catch (migErr) {
+      console.error("Sales migratsiyasida xatolik:", migErr);
+    }
 
     db.prepare(`
       CREATE TABLE IF NOT EXISTS sale_items (
@@ -114,7 +134,7 @@ function initDB() {
       )
     `).run();
 
-    // 5. Mijozlar va Qarzlar
+    // 4. Mijozlar va Qarzlar
     db.prepare(`
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,7 +161,7 @@ function initDB() {
       )
     `).run();
 
-    // 6. Xodimlar
+    // 5. Xodimlar
     db.prepare(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,16 +172,45 @@ function initDB() {
       )
     `).run();
 
-    // 7. Sozlamalar
+    // 6. Sozlamalar va Oshxona
     db.prepare(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`).run();
-
-    // 8. Oshxona
     db.prepare(`CREATE TABLE IF NOT EXISTS kitchens (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, printer_ip TEXT, printer_port INTEGER DEFAULT 9100, printer_type TEXT DEFAULT 'driver')`).run();
 
-    // 9. SMS
-    db.prepare(`CREATE TABLE IF NOT EXISTS sms_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT UNIQUE, template TEXT, is_active INTEGER DEFAULT 1)`).run();
-    db.prepare(`CREATE TABLE IF NOT EXISTS sms_history (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT, message TEXT, status TEXT, date TEXT, type TEXT)`).run();
-    
+    // 7. SMS (TUZATILDI)
+    // Agar sms_templates jadvali eski bo'lsa, uni tekshiramiz va kerak bo'lsa yangilaymiz.
+    // Eng oddiy yo'l: title ustuni yo'q bo'lsa, jadvalni o'chirib yangidan yaratamiz (chunki bu shablonlar).
+    try {
+      // Jadval borligini tekshirish
+      const checkTbl = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_templates'").get();
+      
+      if (checkTbl) {
+        const smsCols = db.prepare("PRAGMA table_info(sms_templates)").all();
+        const hasTitle = smsCols.some(col => col.name === 'title');
+        
+        // Agar title ustuni bo'lmasa, jadvalni yangilash kerak
+        if (!hasTitle) {
+           console.log("MIGRATION: Eski sms_templates jadvali o'chirilib, yangisi yaratilmoqda...");
+           db.prepare("DROP TABLE sms_templates").run();
+        }
+      }
+
+      // Yangi jadvalni yaratish
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS sms_templates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT UNIQUE NOT NULL, 
+          title TEXT NOT NULL,
+          template TEXT NOT NULL,
+          is_active INTEGER DEFAULT 1
+        )
+      `).run();
+
+      db.prepare(`CREATE TABLE IF NOT EXISTS sms_history (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT, message TEXT, status TEXT, date TEXT, type TEXT)`).run();
+
+    } catch (smsErr) {
+      console.error("SMS jadvallarini yaratishda xato:", smsErr);
+    }
+
     // --- INDEKSLAR ---
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_tables_status ON tables(status)`).run();
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_tables_hall ON tables(hall_id)`).run();
@@ -172,11 +221,11 @@ function initDB() {
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items(sale_id)`).run();
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_debt_history_customer ON debt_history(customer_id)`).run();
 
-    // --- MIGRATSIYALAR (Agar eski ustunlar yo'q bo'lsa qo'shish) ---
+    // --- MIGRATSIYALAR (Users) ---
     const userCols = db.prepare(`PRAGMA table_info(users)`).all();
     if (!userCols.some(c => c.name === 'salt')) db.prepare(`ALTER TABLE users ADD COLUMN salt TEXT`).run();
 
-    // --- SEEDING: Default Admin yaratish ---
+    // --- SEEDING: Default Admin ---
     const userCount = db.prepare('SELECT count(*) as count FROM users').get().count;
     if (userCount === 0) {
         const { salt, hash } = hashPIN('1111');
@@ -184,13 +233,29 @@ function initDB() {
         console.log("✅ Default Admin yaratildi (PIN: 1111)");
     }
 
-    // Default SMS
-    const templateCount = db.prepare('SELECT count(*) as count FROM sms_templates').get().count;
-    if (templateCount === 0) {
-        const insert = db.prepare('INSERT INTO sms_templates (type, template) VALUES (?, ?)');
-        insert.run('debt', 'Hurmatli {name}, sizning {amount} so\'m qarzingiz mavjud. Iltimos to\'lov qiling.');
-        insert.run('news', 'Aksiya! Bizda yangi taomlar.');
-        insert.run('birthday', 'Tug\'ilgan kuningiz bilan!');
+    // --- SEEDING: SMS Shablonlari ---
+    try {
+        const templateCount = db.prepare('SELECT count(*) as count FROM sms_templates').get().count;
+        if (templateCount === 0) {
+            const insertTpl = db.prepare('INSERT INTO sms_templates (type, title, template, is_active) VALUES (?, ?, ?, ?)');
+            
+            insertTpl.run('debt', 'Qarz Eslatmasi', 'Hurmatli {name}, sizning {amount} so\'m qarzingiz to\'lov muddati keldi. Iltimos, to\'lovni amalga oshiring. {restaurant}', 1);
+            insertTpl.run('birthday', 'Tug\'ilgan Kun', 'Hurmatli {name}, tug\'ilgan kuningiz bilan! Sizni {restaurant} da kutib qolamiz. Maxsus chegirma sizni kutmoqda!', 1);
+            insertTpl.run('new_dish', 'Yangi Taom', 'Yangi taom: {dish_name}! {restaurant} ga kelib ta\'tib ko\'ring.', 1);
+            
+            console.log("✅ Default SMS shablonlar yaratildi");
+        }
+    } catch (err) {
+        console.error("SMS shablonlarini seed qilishda xato:", err);
+    }
+
+    // --- SEEDING: Default Oshxona/Zal ---
+    const stmtHalls = db.prepare('SELECT count(*) as count FROM halls');
+    if (stmtHalls.get().count === 0) {
+        const hall1 = db.prepare("INSERT INTO halls (name) VALUES ('Asosiy Zal')").run().lastInsertRowid;
+        db.prepare("INSERT INTO tables (hall_id, name) VALUES (?, 'Stol 1')").run(hall1);
+        db.prepare("INSERT INTO categories (name) VALUES ('Taomlar')").run();
+        db.prepare("INSERT INTO products (category_id, name, price, destination) VALUES (1, 'Osh', 65000, '1')").run();
     }
 
     log.info("Bazalar tekshirildi va yuklandi.");

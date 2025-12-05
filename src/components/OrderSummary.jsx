@@ -52,8 +52,6 @@ const OrderSummary = ({ table, onDeselect }) => {
     if (!table || !window.electron) return;
     try {
       const { ipcRenderer } = window.electron;
-      // Chek chiqarish uchun hozirgi holatdagi checkout funksiyasiga o'xshash alohida 'print-check' handler ham qo'shish mumkin
-      // Lekin hozircha statusni o'zgartirish bilan cheklanamiz
       await ipcRenderer.invoke('update-table-status', { id: table.id, status: 'payment' });
     } catch (error) { console.error(error); }
   };
@@ -82,7 +80,8 @@ const OrderSummary = ({ table, onDeselect }) => {
   }
   const finalTotal = preTotal - discountAmount;
 
-  const handlePaymentSuccess = async (method) => {
+  // --- TO'LOV QILISH (YANGILANGAN) ---
+  const handlePaymentSuccess = async (method, debtDate) => {
     if (!table || !window.electron) return;
     try {
       const { ipcRenderer } = window.electron;
@@ -94,7 +93,8 @@ const OrderSummary = ({ table, onDeselect }) => {
           discount: discountAmount,
           paymentMethod: method,
           customerId: selectedCustomer ? selectedCustomer.id : null,
-          items: orderItems
+          items: orderItems,
+          debtDueDate: debtDate // Yangi parametr
       };
 
       await ipcRenderer.invoke('checkout', checkoutData);
@@ -137,15 +137,12 @@ const OrderSummary = ({ table, onDeselect }) => {
         <div className={`p-6 border-b border-gray-100 ${table.status === 'payment' ? 'bg-yellow-50' : 'bg-gray-50'}`}>
           <div className="flex justify-between items-center mb-1">
             <h2 className="text-2xl font-bold text-gray-800">{table.name}</h2>
-            
-            {/* --- YANGI: CHEK RAQAMI --- */}
             {table.current_check_number > 0 && (
                 <div className="flex items-center gap-1 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-200">
                     <Hash size={14} className="text-gray-500" />
                     <span className="font-black text-lg text-gray-800">{table.current_check_number}</span>
                 </div>
             )}
-            {/* ------------------------- */}
           </div>
           
           <div className="flex justify-between items-center mt-2">

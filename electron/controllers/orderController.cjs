@@ -106,7 +106,6 @@ module.exports = {
                 await printerService.printKitchenTicket(items, tableName, checkNumber, nameToPrint);
             } catch (printErr) {
                 log.error("Oshxona printeri xatosi:", printErr);
-                // YANGI: Xatoni frontendga yuborish
                 notify('printer-error', `Oshxona printeri: ${printErr.message}`);
             }
         }, 100);
@@ -119,7 +118,8 @@ module.exports = {
 
   // 3. Checkout (To'lov)
   checkout: async (data) => {
-    const { tableId, total, subtotal, discount, paymentMethod, customerId, items } = data;
+    // debtDueDate parametrini ham olamiz
+    const { tableId, total, subtotal, discount, paymentMethod, customerId, items, debtDueDate } = data;
     const date = new Date().toISOString();
     
     try {
@@ -133,11 +133,15 @@ module.exports = {
           waiterName = table ? table.waiter_name : "Kassir";
           guestCount = table ? table.guests : 0;
 
-          db.prepare(`INSERT INTO sales (date, total_amount, subtotal, discount, payment_method, customer_id, items_json, check_number, waiter_name, guest_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(date, total, subtotal, discount, paymentMethod, customerId, JSON.stringify(items), checkNumber, waiterName, guestCount);
+          // YANGI: debt_due_date ni ham saqlaymiz
+          db.prepare(`INSERT INTO sales (date, total_amount, subtotal, discount, payment_method, customer_id, items_json, check_number, waiter_name, guest_count, debt_due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(date, total, subtotal, discount, paymentMethod, customerId, JSON.stringify(items), checkNumber, waiterName, guestCount, debtDueDate || null);
           
           if (paymentMethod === 'debt' && customerId) {
              db.prepare('UPDATE customers SET debt = debt + ? WHERE id = ?').run(total, customerId);
-             db.prepare('INSERT INTO debt_history (customer_id, amount, type, date, comment) VALUES (?, ?, ?, ?, ?)').run(customerId, total, 'debt', date, `Savdo #${checkNumber} (${waiterName})`);
+             
+             // Tarixga yozish
+             const comment = debtDueDate ? `Nasiya #${checkNumber} (Muddati: ${debtDueDate})` : `Savdo #${checkNumber} (Nasiya)`;
+             db.prepare('INSERT INTO debt_history (customer_id, amount, type, date, comment) VALUES (?, ?, ?, ?, ?)').run(customerId, total, 'debt', date, comment);
           }
           
           db.prepare('DELETE FROM order_items WHERE table_id = ?').run(tableId);
@@ -169,7 +173,6 @@ module.exports = {
                 });
             } catch (err) {
                 log.error("Kassa printeri xatosi:", err);
-                // YANGI: Xatoni frontendga yuborish
                 notify('printer-error', `Kassa printeri: ${err.message}`);
             }
         }, 100);

@@ -1,30 +1,46 @@
-import React, { useState } from 'react';
-import { X, Banknote, CreditCard, Smartphone, Check, FileText, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Banknote, CreditCard, Smartphone, Check, FileText, AlertCircle, Calendar } from 'lucide-react';
 
 const PaymentModal = ({ isOpen, onClose, totalAmount, onPay, selectedCustomer }) => {
   if (!isOpen) return null;
 
   const [activeMethod, setActiveMethod] = useState('cash');
+  const [debtDate, setDebtDate] = useState(''); // Qarz qaytarish sanasi
   const [error, setError] = useState('');
+
+  // Modall ochilganda sanani tozalash
+  useEffect(() => {
+    if (isOpen) {
+      setDebtDate('');
+      setError('');
+      setActiveMethod('cash');
+    }
+  }, [isOpen]);
 
   // To'lov turlari
   const paymentMethods = [
     { id: 'cash', label: 'Naqd', icon: <Banknote size={24} /> },
     { id: 'card', label: 'Karta', icon: <CreditCard size={24} /> },
     { id: 'click', label: 'Click / Payme', icon: <Smartphone size={24} /> },
-    // Nasiya
     { id: 'debt', label: 'Nasiya (Qarz)', icon: <FileText size={24} /> },
   ];
 
   const handlePayment = () => {
     // Agar Nasiya tanlangan bo'lsa va mijoz tanlanmagan bo'lsa -> Xatolik
-    if (activeMethod === 'debt' && !selectedCustomer) {
-      setError("Nasiya yozish uchun avval mijozni tanlashingiz shart!");
-      return;
+    if (activeMethod === 'debt') {
+        if (!selectedCustomer) {
+            setError("Nasiya yozish uchun avval mijozni tanlashingiz shart!");
+            return;
+        }
+        if (!debtDate) {
+            setError("Iltimos, qarzni qaytarish sanasini kiriting!");
+            return;
+        }
     }
 
     if (onPay) {
-        onPay(activeMethod);
+        // Sanani ham yuboramiz (faqat nasiya uchun)
+        onPay(activeMethod, activeMethod === 'debt' ? debtDate : null);
     } else {
         onClose();
     }
@@ -32,7 +48,7 @@ const PaymentModal = ({ isOpen, onClose, totalAmount, onPay, selectedCustomer })
 
   const selectMethod = (id) => {
       setActiveMethod(id);
-      setError(''); // Metod o'zgarganda xatoni tozalash
+      setError('');
   };
 
   return (
@@ -67,6 +83,22 @@ const PaymentModal = ({ isOpen, onClose, totalAmount, onPay, selectedCustomer })
             ))}
           </div>
 
+          {/* QARZ SANASI INPUTI */}
+          {activeMethod === 'debt' && (
+             <div className="mb-4 bg-orange-50 p-4 rounded-xl border border-orange-100 animate-in slide-in-from-top duration-300">
+                <label className="block text-sm font-bold text-orange-800 mb-2 flex items-center gap-2">
+                    <Calendar size={16} /> Qaytarish sanasi
+                </label>
+                <input 
+                    type="date" 
+                    value={debtDate}
+                    onChange={(e) => setDebtDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]} // O'tgan kunlarni tanlab bo'lmasligi uchun
+                    className="w-full p-3 rounded-lg border border-orange-200 outline-none focus:border-orange-500 bg-white text-gray-800 font-bold"
+                />
+             </div>
+          )}
+
           {/* Xato xabari */}
           {error && (
               <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl flex items-center gap-2 text-sm font-bold animate-pulse">
@@ -74,16 +106,7 @@ const PaymentModal = ({ isOpen, onClose, totalAmount, onPay, selectedCustomer })
               </div>
           )}
 
-          {/* Agar Nasiya tanlangan bo'lsa, ogohlantirish */}
-          {activeMethod === 'debt' && !error && (
-             <div className={`text-center text-sm mb-4 p-2 rounded-lg ${selectedCustomer ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-600 font-bold'}`}>
-               {selectedCustomer 
-                 ? `Qarz "${selectedCustomer.name}" nomiga yoziladi.` 
-                 : "DIQQAT: Nasiya uchun mijoz tanlanmagan!"}
-             </div>
-          )}
-
-          <div className="flex gap-3">
+          <div className="flex gap-3 mt-4">
             <button onClick={onClose} className="flex-1 py-4 text-gray-600 font-bold hover:bg-gray-50 rounded-xl transition-colors">Bekor qilish</button>
             <button onClick={handlePayment} className="flex-1 py-4 bg-green-500 text-white font-bold rounded-xl shadow-lg hover:bg-green-600 transition-transform active:scale-95">To'lash</button>
           </div>

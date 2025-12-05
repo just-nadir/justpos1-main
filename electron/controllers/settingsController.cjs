@@ -1,7 +1,6 @@
 const { db, notify } = require('../database.cjs');
-const fs = require('fs');
-const path = require('path');
-const { app } = require('electron');
+const eskizService = require('../services/eskizService.cjs'); // Eskiz servisni chaqiramiz
+const log = require('electron-log');
 
 module.exports = {
   getSettings: () => {
@@ -22,15 +21,12 @@ module.exports = {
   getKitchens: () => db.prepare('SELECT * FROM kitchens').all(),
   
   saveKitchen: (data) => {
-    // printer_type ni ham saqlaymiz. Default 'lan'.
-    const type = data.printer_type || 'lan';
-    
     if (data.id) {
-        db.prepare('UPDATE kitchens SET name = ?, printer_ip = ?, printer_port = ?, printer_type = ? WHERE id = ?')
-          .run(data.name, data.printer_ip, data.printer_port || 9100, type, data.id);
+        db.prepare('UPDATE kitchens SET name = ?, printer_ip = ?, printer_port = ? WHERE id = ?')
+          .run(data.name, data.printer_ip, data.printer_port || 9100, data.id);
     } else {
-        db.prepare('INSERT INTO kitchens (name, printer_ip, printer_port, printer_type) VALUES (?, ?, ?, ?)')
-          .run(data.name, data.printer_ip, data.printer_port || 9100, type);
+        db.prepare('INSERT INTO kitchens (name, printer_ip, printer_port) VALUES (?, ?, ?)')
+          .run(data.name, data.printer_ip, data.printer_port || 9100);
     }
     notify('kitchens', null);
   },
@@ -42,32 +38,67 @@ module.exports = {
       return res;
   },
 
-  backupDB: () => {
+  // --- YANGI: SMS SHABLONLARI ---
+  getSmsTemplates: () => {
+      return db.prepare('SELECT * FROM sms_templates').all();
+  },
+
+  saveSmsTemplate: (data) => {
+      // data: { id, template, is_active }
+      const res = db.prepare('UPDATE sms_templates SET template = ?, is_active = ? WHERE id = ?')
+        .run(data.template, data.is_active ? 1 : 0, data.id);
+      notify('sms-templates', null);
+      return res;
+  },
+
+  // --- YANGI: OMMAVIY SMS (Yangi taom haqida) ---
+  sendMassSms: async (templateId) => {
       try {
-          const dbPath = path.join(app.getAppPath(), 'pos.db');
-          const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-          const backupName = `pos_backup_${dateStr}.db`;
+          // 1. Shablonni olamiz
+          const tplRow = db.prepare('SELECT template FROM sms_templates WHERE id = ?').get(templateId);
+          if (!tplRow) throw new Error("Shablon topilmadi");
           
-          const backupPath = path.join(app.getPath('documents'), 'POS_Backups', backupName);
-          const backupDir = path.dirname(backupPath);
+          let template = tplRow.template;
 
-          if (!fs.existsSync(backupDir)) {
-              fs.mkdirSync(backupDir, { recursive: true });
+          // 2. Restoran nomini olamiz
+          const settings = db.prepare('SELECT value FROM settings WHERE key = "restaurantName"').get();
+          const restaurantName = settings ? settings.value : "Bizning Restoran";
+
+          // 3. Barcha mijozlarni olamiz (Telefon raqami borlarni)
+          const customers = db.prepare("SELECT name, phone FROM customers WHERE phone IS NOT NULL AND phone != ''").all();
+          
+          if (customers.length === 0) throw new Error("Mijozlar topilmadi");
+
+          log.info(`OMMAVIY SMS: ${customers.length} ta mijozga yuborilmoqda...`);
+
+          // 4. Har biriga yuboramiz (Sekinlatib, spamga tushmaslik uchun)
+          let sentCount = 0;
+          for (const customer of customers) {
+              // Shablonni to'ldirish
+              let message = template
+                  .replace(/{name}/g, customer.name)
+                  .replace(/{restaurant}/g, restaurantName);
+              
+              // Agar shablonda {dish_name} qolgan bo'lsa, uni umumiy so'zga almashtiramiz yoki frontenddan olib kelish kerak bo'ladi. 
+              // Hozircha oddiyroq yechim: admin shablonni o'zi to'g'irlab yozadi deb hisoblaymiz.
+              
+              const res = await eskizService.sendSMS(customer.phone, message);
+              if (res.success) {
+                  sentCount++;
+                  // Tarixga yozish
+                  db.prepare('INSERT INTO sms_history (phone, message, status, date, type) VALUES (?, ?, ?, ?, ?)')
+                    .run(customer.phone, message, 'sent', new Date().toISOString(), 'mass_news');
+              }
+              // API ni bombardimon qilmaslik uchun kichik pauza
+              await new Promise(r => setTimeout(r, 100)); 
           }
-          
-          db.backup(backupPath)
-            .then(() => {
-                console.log('Backup successful:', backupPath);
-            })
-            .catch((err) => {
-                console.error('Backup failed:', err);
-                throw err;
-            });
 
-          return { success: true, path: backupPath };
+          log.info(`OMMAVIY SMS: ${sentCount} ta yuborildi.`);
+          return { success: true, sent: sentCount, total: customers.length };
+
       } catch (err) {
-          console.error(err);
-          throw new Error("Backup qilib bo'lmadi: " + err.message);
+          log.error("Mass SMS Error:", err);
+          throw err;
       }
   }
 };
